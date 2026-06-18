@@ -243,30 +243,56 @@ function AuthScreen({ mode, onAuth, onToggle }) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleSubmit = async () => {
-    setLoading(true); setError("");
+    if (!email.trim() || !pass.trim()) { setError("Please fill in all fields"); return; }
+    if (mode === "signup" && !name.trim()) { setError("Please enter your name"); return; }
+    if (pass.length < 6) { setError("Password must be at least 6 characters"); return; }
+    setLoading(true); setError(""); setSuccess("");
     try {
       if (mode === "signup") {
-        const { data, error: err } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
+        const { data, error: err } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: pass,
+          options: { data: { full_name: name.trim() } }
+        });
         if (err) throw err;
-        if (data.user) {
-          await supabase.from("profiles").upsert({ id: data.user.id, full_name: name, email, plan: "free", created_at: new Date().toISOString() });
+        if (data?.user?.identities?.length === 0) {
+          setError("An account with this email already exists. Please sign in instead.");
+          setLoading(false); return;
+        }
+        if (data?.user) {
+          try {
+            await supabase.from("profiles").upsert({
+              id: data.user.id, full_name: name.trim(),
+              email: email.trim(), plan: "free", onboarded: false,
+              created_at: new Date().toISOString()
+            });
+          } catch(e) { console.log("Profile upsert:", e); }
           onAuth(data.user);
+        } else {
+          setSuccess("Check your email to confirm your account, then sign in.");
         }
       } else {
-        const { data, error: err } = await supabase.auth.signInWithPassword({ email, password: pass });
+        const { data, error: err } = await supabase.auth.signInWithPassword({
+          email: email.trim(), password: pass
+        });
         if (err) throw err;
-        if (data.user) onAuth(data.user);
+        if (data?.user) onAuth(data.user);
       }
     } catch (e) {
-      setError(e.message || "Authentication failed");
+      setError(e.message || "Something went wrong. Please try again.");
     }
     setLoading(false);
   };
 
   const handleGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+    setError("");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.href }
+    });
     if (error) setError(error.message);
   };
 
@@ -291,14 +317,30 @@ function AuthScreen({ mode, onAuth, onToggle }) {
         </div>
 
         {error && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px", color: "#FCA5A5", fontSize: "0.85rem", marginBottom: "1rem" }}>{error}</div>}
+        {success && <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 8, padding: "10px 14px", color: "#86EFAC", fontSize: "0.85rem", marginBottom: "1rem" }}>{success}</div>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {mode === "signup" && <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" }} />}
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" type="email" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" }} />
-          <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Password" type="password" onKeyDown={e => e.key === "Enter" && handleSubmit()} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" }} />
+          {mode === "signup" && (
+            <input
+              value={name} onChange={e => setName(e.target.value)}
+              placeholder="Full name"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }}
+            />
+          )}
+          <input
+            value={email} onChange={e => setEmail(e.target.value)}
+            placeholder="Email address" type="email"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }}
+          />
+          <input
+            value={pass} onChange={e => setPass(e.target.value)}
+            placeholder="Password (min 6 characters)" type="password"
+            onKeyDown={e => e.key === "Enter" && handleSubmit()}
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }}
+          />
         </div>
 
-        <button onClick={handleSubmit} disabled={loading} style={{ width: "100%", marginTop: "1.25rem", padding: 13, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: "1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: loading ? 0.7 : 1 }}>
+        <button onClick={handleSubmit} disabled={loading} style={{ width: "100%", marginTop: "1.25rem", padding: 13, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: "1rem", cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: loading ? 0.7 : 1 }}>
           {loading && <Spinner />}{mode === "login" ? "Sign in" : "Create account"}
         </button>
 
@@ -904,36 +946,55 @@ function SettingsPage({ user, profile, onLogout }) {
 export default function App() {
   const [screen, setScreen] = useState("loading");
   const [user, setUser] = useState(null);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+
+  const checkAndRoute = async (u) => {
+    if (!u) { setScreen("landing"); return; }
+    setUser(u);
+    try {
+      const { data } = await supabase.from("profiles").select("onboarded").eq("id", u.id).single();
+      setScreen(data?.onboarded ? "app" : "onboarding");
+    } catch {
+      setScreen("onboarding");
+    }
+  };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        const { data } = await supabase.from("profiles").select("onboarded").eq("id", session.user.id).single();
-        setNeedsOnboarding(!data?.onboarded);
-        setScreen(data?.onboarded ? "app" : "onboarding");
-      } else {
-        setScreen("landing");
-      }
+    // Handle Google OAuth redirect (hash contains access_token)
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token")) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        window.history.replaceState(null, "", window.location.pathname);
+        checkAndRoute(session?.user || null);
+      });
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      checkAndRoute(session?.user || null);
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        const { data } = await supabase.from("profiles").select("onboarded").eq("id", session.user.id).single();
-        setScreen(data?.onboarded ? "app" : "onboarding");
-      } else {
+      if (event === "SIGNED_IN" && session?.user) {
+        checkAndRoute(session.user);
+      } else if (event === "SIGNED_OUT") {
         setUser(null);
         setScreen("landing");
       }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
-  if (screen === "loading") return <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "Inter,sans-serif" }}><Spinner /><span style={{ marginLeft: 12, color: "rgba(255,255,255,0.5)" }}>Loading...</span></div>;
+  if (screen === "loading") return (
+    <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "Inter,sans-serif", flexDirection: "column", gap: 16 }}>
+      <div style={{ width: 48, height: 48, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.2rem" }}>A</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Spinner /><span style={{ color: "rgba(255,255,255,0.5)" }}>Loading AutoApply AI...</span></div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
   if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />;
-  if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => { setUser(u); setScreen("app"); }} onToggle={() => setScreen("signup")} />;
-  if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => { setUser(u); setScreen("onboarding"); }} onToggle={() => setScreen("login")} />;
+  if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} />;
+  if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} />;
   if (screen === "onboarding") return <Onboarding user={user} onComplete={() => setScreen("app")} />;
   if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); setScreen("landing"); }} />;
   return null;
