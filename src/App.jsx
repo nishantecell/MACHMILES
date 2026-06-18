@@ -279,30 +279,32 @@ function AuthScreen({ mode, onAuth, onToggle }) {
     setLoading(true); setError(""); setSuccess("");
     try {
       if (mode === "signup") {
-        const data = await apiPost("/auth/register", { name: name.trim(), email: email.trim(), password: pass });
-        if (!data.success) { setError(data.message || "Registration failed"); setLoading(false); return; }
-        // Auto login after register
-        const login = await apiPost("/auth/login", { email: email.trim(), password: pass });
-        if (login.success && login.data?.accessToken) {
-          setTokens(login.data.accessToken, login.data.refreshToken);
-          onAuth(login.data.user);
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(), password: pass,
+          options: { data: { full_name: name.trim() } }
+        });
+        if (error) throw error;
+        if (data?.user) {
+          await supabase.from("profiles").upsert({ id: data.user.id, full_name: name.trim(), email: email.trim(), plan: "free", onboarded: false });
+          onAuth(data.user);
         } else {
-          setSuccess("Account created! Please sign in.");
+          setSuccess("Account created! Please check your email to verify, then sign in.");
         }
       } else {
-        const data = await apiPost("/auth/login", { email: email.trim(), password: pass });
-        if (!data.success) { setError(data.message || "Login failed"); setLoading(false); return; }
-        setTokens(data.data.accessToken, data.data.refreshToken);
-        onAuth(data.data.user);
+        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
+        if (error) throw error;
+        if (data?.user) onAuth(data.user);
       }
     } catch (e) {
-      setError("Something went wrong. Please try again.");
+      setError(e.message || "Something went wrong. Please try again.");
     }
     setLoading(false);
   };
 
   const handleGoogle = async () => {
-    setError("Google login coming soon. Please use email/password for now.");
+    setError("");
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+    if (error) setError(error.message);
   };
 
   return (
@@ -371,7 +373,7 @@ function Onboarding({ user, onComplete }) {
 
   const complete = async () => {
     setSaving(true);
-    await apiPut("/profile", { desired_job_title: prefs.title, location: prefs.location, work_type: prefs.remote, salary: prefs.salary, experience_level: prefs.level });
+    await supabase.from("profiles").upsert({ id: user.id, desired_job_title: prefs.title, location: prefs.location, work_type: prefs.remote, salary: prefs.salary, experience_level: prefs.level, onboarded: true });
     setSaving(false);
     onComplete();
   };
@@ -450,7 +452,7 @@ function AppShell({ user, onLogout }) {
   const [profile, setProfile] = useState(null);
 
   useEffect(() => {
-    apiGet("/profile").then(data => { if (data.success) setProfile(data.data); });
+    supabase.from("profiles").select("*").eq("id", user.id).single().then(({ data }) => { if (data) setProfile(data); });
   }, [user.id]);
 
   const renderPage = () => {
@@ -611,7 +613,7 @@ function JobsPage({ user }) {
   };
 
   const handleApply = async (job) => {
-    await apiPost("/applications", { company: job.company, position: job.title, status: "applied", match_score: job.match });
+    await supabase.from("applications").insert({ user_id: user.id, company: job.company, position: job.title, status: "Applied", match_score: job.match, applied_at: new Date().toISOString() });
     alert(`✅ Applied to ${job.title} at ${job.company}! Saved to your tracker.`);
   };
 
@@ -656,7 +658,7 @@ function ApplicationsPage({ user }) {
   const [statusFilter, setStatusFilter] = useState("All");
 
   useEffect(() => {
-    apiGet("/applications").then(data => { setApps(data.success && data.data?.applications?.length ? data.data.applications : SAMPLE_APPS); setLoading(false); });
+    supabase.from("applications").select("*").eq("user_id", user.id).order("applied_at", { ascending: false }).then(({ data }) => { setApps(data?.length ? data : SAMPLE_APPS); setLoading(false); });
   }, [user.id]);
 
   const statuses = ["All", ...Object.keys(STATUS_COLORS)];
@@ -876,7 +878,7 @@ function SettingsPage({ user, profile, onLogout }) {
 
   const saveProfile = async () => {
     setSaving(true);
-    await apiPut("/profile", { name });
+    await supabase.from("profiles").upsert({ id: user.id, full_name: name, updated_at: new Date().toISOString() });
     setSaving(false);
     alert("Profile saved!");
   };
@@ -892,7 +894,7 @@ function SettingsPage({ user, profile, onLogout }) {
       prefill: { email },
       theme: { color: "#3B82F6" },
       handler: async (r) => {
-        await apiPost("/payments/verify", { razorpay_order_id: r.razorpay_order_id, razorpay_payment_id: r.razorpay_payment_id, razorpay_signature: r.razorpay_signature, plan: plan.name.toLowerCase() });
+        await supabase.from("profiles").upsert({ id: user.id, plan: plan.name.toLowerCase(), payment_id: r.razorpay_payment_id });
         setPaySuccess({ plan: plan.name, id: r.razorpay_payment_id });
         setPayingPlan(null);
       },
@@ -901,7 +903,7 @@ function SettingsPage({ user, profile, onLogout }) {
   };
 
   const handleLogout = async () => {
-    clearTokens();
+    await supabase.auth.signOut();
     onLogout();
   };
 
@@ -970,7 +972,7 @@ export default function App() {
         setUser(data.data);
         setScreen("app");
       } else {
-        clearTokens();
+        await supabase.auth.signOut();
         setScreen("landing");
       }
     });
