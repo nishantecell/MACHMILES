@@ -1,71 +1,67 @@
 // api/auth/login.js
-const bcrypt   = require('bcryptjs');
-const jwt      = require('jsonwebtoken');
-const supabase = require('../_lib/supabase');
-const { handleCors, ok, badReq, unauth, forbid, err, validate } = require('../_lib/helpers');
+import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 
-module.exports = async (req, res) => {
-  if (handleCors(req, res)) return;
-  if (req.method !== 'POST') return badReq(res, 'Method not allowed');
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
 
   const { email, password } = req.body || {};
-
-  const errors = validate({ email, password }, {
-    email:    { required: true, isEmail: true },
-    password: { required: true },
-  });
-  if (errors.length) return badReq(res, 'Validation failed', errors);
+  if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password are required' });
 
   try {
-    const { data: user } = await supabase
-      .from('users')
-      .select('id, name, email, password_hash, role, plan, is_active, email_verified')
-      .eq('email', email.toLowerCase())
-      .single();
-
-    if (!user) return unauth(res, 'Invalid email or password');
-    if (!user.is_active) return forbid(res, 'Account deactivated. Contact support.');
-
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) return unauth(res, 'Invalid email or password');
-
-    // Update last login
-    await supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', user.id);
-
-    // Generate tokens
-    const accessToken = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_ACCESS_SECRET,
-      { expiresIn: '15m' }
-    );
-    const refreshToken = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // Save refresh token
-    await supabase.from('refresh_tokens').insert({
-      user_id:    user.id,
-      token:      refreshToken,
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      revoked:    false,
+    // Use Supabase built-in auth to verify credentials
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
     });
 
-    return ok(res, {
-      user: {
-        id:             user.id,
-        name:           user.name,
-        email:          user.email,
-        role:           user.role,
-        plan:           user.plan,
-        email_verified: user.email_verified,
+    if (error || !data?.user) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    const user = data.user;
+
+    // Get profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, plan, onboarded')
+      .eq('id', user.id)
+      .single();
+
+    // Generate our own JWT tokens for API auth
+    const accessToken = jwt.sign(
+      { userId: user.id, email: user.email, role: profile?.role || 'user' },
+      process.env.JWT_ACCESS_SECRET,
+      { expiresIn: '7d' } // 7 days for convenience
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: {
+          id:       user.id,
+          name:     profile?.full_name || user.user_metadata?.full_name || email.split('@')[0],
+          email:    user.email,
+          role:     'user',
+          plan:     profile?.plan || 'free',
+          onboarded: profile?.onboarded || false,
+        },
+        accessToken,
+        refreshToken: accessToken, // same token for simplicity
       },
-      accessToken,
-      refreshToken,
-    }, 'Login successful');
+    });
   } catch (e) {
-    console.error('Login error:', e);
-    return err(res, 'Login failed');
+    console.error('Login error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
   }
-};
+}
