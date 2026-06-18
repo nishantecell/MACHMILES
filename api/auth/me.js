@@ -1,25 +1,40 @@
 // api/auth/me.js
-const supabase = require('../_lib/supabase');
-const { handleCors, ok, notFound, err, authenticate } = require('../_lib/helpers');
+import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 
-module.exports = async (req, res) => {
-  if (handleCors(req, res)) return;
-  if (req.method !== 'GET') return;
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-  const user = await authenticate(req, res);
-  if (!user) return;
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET') return res.status(405).json({ success: false, message: 'Method not allowed' });
+
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'No token provided' });
 
   try {
+    const token = header.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+
     const { data: profile } = await supabase
-      .from('users')
-      .select(`*, user_profiles(*)`)
-      .eq('id', user.id)
+      .from('profiles')
+      .select('*')
+      .eq('id', decoded.userId)
       .single();
 
-    if (!profile) return notFound(res, 'User not found');
-    delete profile.password_hash;
-    return ok(res, profile);
+    if (!profile) return res.status(404).json({ success: false, message: 'User not found' });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Success',
+      data: { id: decoded.userId, email: decoded.email, ...profile },
+    });
   } catch (e) {
-    return err(res, 'Failed to fetch profile');
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
-};
+}
