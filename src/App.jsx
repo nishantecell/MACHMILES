@@ -1,13 +1,40 @@
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const SUPABASE_URL = "https://pxkvmdhccrthskdujewn.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4a3ZtZGhjY3J0aHNrZHVqZXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3NzQ3NTgsImV4cCI6MjA5NzM1MDc1OH0.wci1QIBk3yaHnt4MgrLCiR2ihhNVEPrIQp01I0GbQ74";
+const API_BASE = "https://www.machmiles.com/api";
 const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || "";
 const RAZORPAY_KEY = "rzp_live_SqZrMTUnxQH5E4";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
+// ─── API CLIENT ───────────────────────────────────────────────────────────────
+const getToken = () => localStorage.getItem("aa_access_token");
+const setTokens = (access, refresh) => {
+  localStorage.setItem("aa_access_token", access);
+  localStorage.setItem("aa_refresh_token", refresh);
+};
+const clearTokens = () => {
+  localStorage.removeItem("aa_access_token");
+  localStorage.removeItem("aa_refresh_token");
+};
+
+async function api(path, options = {}) {
+  const token = getToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    return res.json();
+  } catch (e) {
+    return { success: false, message: "Network error" };
+  }
+}
+
+const apiGet    = (path)       => api(path, { method: "GET" });
+const apiPost   = (path, body) => api(path, { method: "POST",   body: JSON.stringify(body) });
+const apiPut    = (path, body) => api(path, { method: "PUT",    body: JSON.stringify(body) });
+const apiDelete = (path)       => api(path, { method: "DELETE" });
 
 // ─── PLANS ────────────────────────────────────────────────────────────────────
 const PLANS = [
@@ -252,48 +279,30 @@ function AuthScreen({ mode, onAuth, onToggle }) {
     setLoading(true); setError(""); setSuccess("");
     try {
       if (mode === "signup") {
-        const { data, error: err } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: pass,
-          options: { data: { full_name: name.trim() } }
-        });
-        if (err) throw err;
-        if (data?.user?.identities?.length === 0) {
-          setError("An account with this email already exists. Please sign in instead.");
-          setLoading(false); return;
-        }
-        if (data?.user) {
-          try {
-            await supabase.from("profiles").upsert({
-              id: data.user.id, full_name: name.trim(),
-              email: email.trim(), plan: "free", onboarded: false,
-              created_at: new Date().toISOString()
-            });
-          } catch(e) { console.log("Profile upsert:", e); }
-          onAuth(data.user);
+        const data = await apiPost("/auth/register", { name: name.trim(), email: email.trim(), password: pass });
+        if (!data.success) { setError(data.message || "Registration failed"); setLoading(false); return; }
+        // Auto login after register
+        const login = await apiPost("/auth/login", { email: email.trim(), password: pass });
+        if (login.success && login.data?.accessToken) {
+          setTokens(login.data.accessToken, login.data.refreshToken);
+          onAuth(login.data.user);
         } else {
-          setSuccess("Check your email to confirm your account, then sign in.");
+          setSuccess("Account created! Please sign in.");
         }
       } else {
-        const { data, error: err } = await supabase.auth.signInWithPassword({
-          email: email.trim(), password: pass
-        });
-        if (err) throw err;
-        if (data?.user) onAuth(data.user);
+        const data = await apiPost("/auth/login", { email: email.trim(), password: pass });
+        if (!data.success) { setError(data.message || "Login failed"); setLoading(false); return; }
+        setTokens(data.data.accessToken, data.data.refreshToken);
+        onAuth(data.data.user);
       }
     } catch (e) {
-      setError(e.message || "Something went wrong. Please try again.");
+      setError("Something went wrong. Please try again.");
     }
     setLoading(false);
   };
 
   const handleGoogle = async () => {
-    setError("");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.href }
-    });
-    if (error) setError(error.message);
+    setError("Google login coming soon. Please use email/password for now.");
   };
 
   return (
@@ -362,7 +371,7 @@ function Onboarding({ user, onComplete }) {
 
   const complete = async () => {
     setSaving(true);
-    await supabase.from("profiles").upsert({ id: user.id, job_title: prefs.title, location: prefs.location, work_type: prefs.remote, salary: prefs.salary, experience_level: prefs.level, onboarded: true });
+    await apiPut("/profile", { desired_job_title: prefs.title, location: prefs.location, work_type: prefs.remote, salary: prefs.salary, experience_level: prefs.level });
     setSaving(false);
     onComplete();
   };
@@ -441,7 +450,7 @@ function AppShell({ user, onLogout }) {
   const [profile, setProfile] = useState(null);
 
   useEffect(() => {
-    supabase.from("profiles").select("*").eq("id", user.id).single().then(({ data }) => { if (data) setProfile(data); });
+    apiGet("/profile").then(data => { if (data.success) setProfile(data.data); });
   }, [user.id]);
 
   const renderPage = () => {
@@ -602,7 +611,7 @@ function JobsPage({ user }) {
   };
 
   const handleApply = async (job) => {
-    await supabase.from("applications").insert({ user_id: user.id, company: job.company, position: job.title, status: "Applied", match_score: job.match, applied_at: new Date().toISOString() });
+    await apiPost("/applications", { company: job.company, position: job.title, status: "applied", match_score: job.match });
     alert(`✅ Applied to ${job.title} at ${job.company}! Saved to your tracker.`);
   };
 
@@ -647,8 +656,7 @@ function ApplicationsPage({ user }) {
   const [statusFilter, setStatusFilter] = useState("All");
 
   useEffect(() => {
-    supabase.from("applications").select("*").eq("user_id", user.id).order("applied_at", { ascending: false })
-      .then(({ data }) => { setApps(data?.length ? data : SAMPLE_APPS); setLoading(false); });
+    apiGet("/applications").then(data => { setApps(data.success && data.data?.applications?.length ? data.data.applications : SAMPLE_APPS); setLoading(false); });
   }, [user.id]);
 
   const statuses = ["All", ...Object.keys(STATUS_COLORS)];
@@ -868,7 +876,7 @@ function SettingsPage({ user, profile, onLogout }) {
 
   const saveProfile = async () => {
     setSaving(true);
-    await supabase.from("profiles").upsert({ id: user.id, full_name: name, updated_at: new Date().toISOString() });
+    await apiPut("/profile", { name });
     setSaving(false);
     alert("Profile saved!");
   };
@@ -884,7 +892,7 @@ function SettingsPage({ user, profile, onLogout }) {
       prefill: { email },
       theme: { color: "#3B82F6" },
       handler: async (r) => {
-        await supabase.from("profiles").upsert({ id: user.id, plan: plan.name.toLowerCase(), payment_id: r.razorpay_payment_id });
+        await apiPost("/payments/verify", { razorpay_order_id: r.razorpay_order_id, razorpay_payment_id: r.razorpay_payment_id, razorpay_signature: r.razorpay_signature, plan: plan.name.toLowerCase() });
         setPaySuccess({ plan: plan.name, id: r.razorpay_payment_id });
         setPayingPlan(null);
       },
@@ -893,7 +901,7 @@ function SettingsPage({ user, profile, onLogout }) {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    clearTokens();
     onLogout();
   };
 
@@ -947,42 +955,25 @@ export default function App() {
   const [screen, setScreen] = useState("loading");
   const [user, setUser] = useState(null);
 
-  const checkAndRoute = async (u) => {
+  const checkAndRoute = (u) => {
     if (!u) { setScreen("landing"); return; }
     setUser(u);
-    try {
-      const { data } = await supabase.from("profiles").select("onboarded").eq("id", u.id).single();
-      setScreen(data?.onboarded ? "app" : "onboarding");
-    } catch {
-      setScreen("onboarding");
-    }
+    setScreen("app");
   };
 
   useEffect(() => {
-    // Handle Google OAuth redirect (hash contains access_token)
-    const hash = window.location.hash;
-    if (hash && hash.includes("access_token")) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        window.history.replaceState(null, "", window.location.pathname);
-        checkAndRoute(session?.user || null);
-      });
-      return;
-    }
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      checkAndRoute(session?.user || null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        checkAndRoute(session.user);
-      } else if (event === "SIGNED_OUT") {
-        setUser(null);
+    const token = getToken();
+    if (!token) { setScreen("landing"); return; }
+    // Validate token with backend
+    apiGet("/auth/me").then(data => {
+      if (data.success && data.data) {
+        setUser(data.data);
+        setScreen("app");
+      } else {
+        clearTokens();
         setScreen("landing");
       }
     });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   if (screen === "loading") return (
