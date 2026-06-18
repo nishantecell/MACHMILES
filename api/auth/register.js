@@ -1,54 +1,54 @@
 // api/auth/register.js
-const bcrypt  = require('bcryptjs');
-const jwt     = require('jsonwebtoken');
-const crypto  = require('crypto');
-const supabase = require('../_lib/supabase');
-const { handleCors, ok, created, badReq, conflict, err, validate } = require('../_lib/helpers');
+import { createClient } from '@supabase/supabase-js';
 
-module.exports = async (req, res) => {
-  if (handleCors(req, res)) return;
-  if (req.method !== 'POST') return badReq(res, 'Method not allowed');
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
 
   const { name, email, password } = req.body || {};
-
-  // Validate
-  const errors = validate({ name, email, password }, {
-    name:     { required: true, minLength: 2 },
-    email:    { required: true, isEmail: true },
-    password: { required: true, minLength: 8 },
-  });
-  if (errors.length) return badReq(res, 'Validation failed', errors);
-
-  if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
-    return badReq(res, 'Password must contain uppercase, lowercase, and a number');
-  }
+  if (!name || !email || !password) return res.status(400).json({ success: false, message: 'Name, email and password are required' });
+  if (password.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
 
   try {
-    // Check existing email
-    const { data: existing } = await supabase
-      .from('users').select('id').eq('email', email.toLowerCase()).single();
-    if (existing) return conflict(res, 'An account with this email already exists');
+    // Use Supabase built-in auth
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: email.trim().toLowerCase(),
+      password,
+      email_confirm: true, // auto-confirm so they can login immediately
+      user_metadata: { full_name: name.trim() },
+    });
 
-    // Hash password
-    const password_hash  = await bcrypt.hash(password, 12);
-    const verify_token   = crypto.randomBytes(32).toString('hex');
+    if (error) {
+      if (error.message.includes('already registered') || error.message.includes('already been registered')) {
+        return res.status(409).json({ success: false, message: 'An account with this email already exists' });
+      }
+      throw error;
+    }
 
-    // Create user
-    const { data: user, error: userErr } = await supabase
-      .from('users')
-      .insert({ name, email: email.toLowerCase(), password_hash, verify_token, role: 'user', plan: 'free', is_active: true, email_verified: false })
-      .select('id, email')
-      .single();
+    // Create profile record
+    await supabase.from('profiles').upsert({
+      id: data.user.id,
+      full_name: name.trim(),
+      email: email.trim().toLowerCase(),
+      plan: 'free',
+      onboarded: false,
+    });
 
-    if (userErr) throw userErr;
-
-    // Create profile
-    await supabase.from('user_profiles').insert({ user_id: user.id });
-
-    return created(res, { userId: user.id, email: user.email },
-      'Account created! Please verify your email.');
+    return res.status(201).json({
+      success: true,
+      message: 'Account created successfully!',
+      data: { userId: data.user.id, email: data.user.email },
+    });
   } catch (e) {
-    console.error('Register error:', e);
-    return err(res, 'Registration failed');
+    console.error('Register error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
   }
-};
+}
