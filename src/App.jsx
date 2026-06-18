@@ -4,7 +4,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://pxkvmdhccrthskdujewn.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4a3ZtZGhjY3J0aHNrZHVqZXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3NzQ3NTgsImV4cCI6MjA5NzM1MDc1OH0.wci1QIBk3yaHnt4MgrLCiR2ihhNVEPrIQp01I0GbQ74";
-const OPENAI_KEY = "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";
+const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || "";
 const RAZORPAY_KEY = "rzp_live_SqZrMTUnxQH5E4";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
