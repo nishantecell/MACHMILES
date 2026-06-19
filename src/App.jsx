@@ -1,9 +1,16 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "https://www.machmiles.com/api";
 const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || "";
 const RAZORPAY_KEY = "rzp_live_SqZrMTUnxQH5E4";
+
+// ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 // ─── API CLIENT ───────────────────────────────────────────────────────────────
 const getToken = () => localStorage.getItem("aa_access_token");
@@ -279,21 +286,18 @@ function AuthScreen({ mode, onAuth, onToggle }) {
     setLoading(true); setError(""); setSuccess("");
     try {
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(), password: pass,
-          options: { data: { full_name: name.trim() } }
-        });
-        if (error) throw error;
-        if (data?.user) {
-          await supabase.from("profiles").upsert({ id: data.user.id, full_name: name.trim(), email: email.trim(), plan: "free", onboarded: false });
-          onAuth(data.user);
-        } else {
-          setSuccess("Account created! Please check your email to verify, then sign in.");
-        }
+        const res = await apiPost("/auth/register", { name: name.trim(), email: email.trim(), password: pass });
+        if (!res.success) throw new Error(res.message || "Registration failed");
+        // Auto-login after signup
+        const loginRes = await apiPost("/auth/login", { email: email.trim(), password: pass });
+        if (!loginRes.success) { setSuccess("Account created! Please sign in."); setLoading(false); return; }
+        setTokens(loginRes.data.accessToken, loginRes.data.refreshToken);
+        onAuth(loginRes.data.user);
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
-        if (error) throw error;
-        if (data?.user) onAuth(data.user);
+        const res = await apiPost("/auth/login", { email: email.trim(), password: pass });
+        if (!res.success) throw new Error(res.message || "Login failed");
+        setTokens(res.data.accessToken, res.data.refreshToken);
+        onAuth(res.data.user);
       }
     } catch (e) {
       setError(e.message || "Something went wrong. Please try again.");
@@ -966,13 +970,12 @@ export default function App() {
   useEffect(() => {
     const token = getToken();
     if (!token) { setScreen("landing"); return; }
-    // Validate token with backend
     apiGet("/auth/me").then(data => {
       if (data.success && data.data) {
         setUser(data.data);
         setScreen("app");
       } else {
-        await supabase.auth.signOut();
+        clearTokens();
         setScreen("landing");
       }
     });
