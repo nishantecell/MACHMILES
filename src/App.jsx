@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const API_BASE = "https://www.machmiles.com/api";
+const API_BASE = "/api";
 const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || "";
 const RAZORPAY_KEY = "rzp_live_SqZrMTUnxQH5E4";
 
