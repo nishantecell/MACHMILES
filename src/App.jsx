@@ -443,7 +443,7 @@ function LandingPage({ onSignup, onLogin }) {
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
-function AuthScreen({ mode, onAuth, onToggle }) {
+function AuthScreen({ mode, onAuth, onToggle, onBack }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [name, setName] = useState("");
@@ -498,8 +498,16 @@ function AuthScreen({ mode, onAuth, onToggle }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter,sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter,sans-serif", position: "relative" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+      {onBack && (
+        <button onClick={onBack} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: "0.875rem", transition: "all 0.15s" }}
+          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+          onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+        >
+          ← Back
+        </button>
+      )}
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: "2.5rem", width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
           <div style={{ width: 48, height: 48, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.2rem", margin: "0 auto 1rem", color: "#fff" }}>A</div>
@@ -3814,8 +3822,8 @@ export default function App() {
     </div>
   );
   if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />;
-  if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} />;
-  if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} />;
+  if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} onBack={() => setScreen("landing")} />;
+  if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} onBack={() => setScreen("landing")} />;
   if (screen === "reset-password") return <ResetPasswordScreen onDone={() => { window.location.hash = ""; setScreen("login"); }} />;
   if (screen === "onboarding") return <Onboarding user={user} onComplete={() => setScreen("app")} />;
   if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); setScreen("landing"); }} />;
