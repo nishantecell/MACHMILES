@@ -1,5 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+
+// ─── FIREBASE ─────────────────────────────────────────────────────────────────
+const firebaseApp = getApps().length === 0 ? initializeApp({
+  apiKey: "AIzaSyCaraC5ZLb87-xbwgieko3UWVzaegbAUDM",
+  authDomain: "machmiles-a2dbb.firebaseapp.com",
+  projectId: "machmiles-a2dbb",
+  storageBucket: "machmiles-a2dbb.firebasestorage.app",
+  messagingSenderId: "531969841384",
+  appId: "1:531969841384:web:db3707b5552903f7d7d15d",
+}) : getApps()[0];
+const firebaseAuth = getAuth(firebaseApp);
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "/api";
@@ -460,12 +473,21 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+  const confirmationRef = useRef(null);
+  const recaptchaRef = useRef(null);
 
   useEffect(() => {
     if (otpTimer <= 0) return;
     const t = setTimeout(() => setOtpTimer(n => n - 1), 1000);
     return () => clearTimeout(t);
   }, [otpTimer]);
+
+  // Clean up reCAPTCHA on unmount
+  useEffect(() => {
+    return () => {
+      if (recaptchaRef.current) { try { recaptchaRef.current.clear(); } catch (_) {} recaptchaRef.current = null; }
+    };
+  }, []);
 
   const handleForgotPassword = async () => {
     if (!forgotEmail.trim()) { setError("Enter your email address"); return; }
@@ -480,23 +502,36 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length !== 10) { setError("Enter a valid 10-digit Indian mobile number"); return; }
     setSendingOtp(true); setError("");
-    const res = await apiPost("/auth/register", { action: "send_otp", phone: cleaned });
+    try {
+      // Create or reuse invisible reCAPTCHA
+      if (!recaptchaRef.current) {
+        recaptchaRef.current = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", { size: "invisible" });
+      }
+      const confirmation = await signInWithPhoneNumber(firebaseAuth, "+91" + cleaned, recaptchaRef.current);
+      confirmationRef.current = confirmation;
+      setOtpSent(true);
+      setOtpTimer(30);
+      setSuccess("OTP sent to +91 " + cleaned);
+    } catch (e) {
+      setError(e.message || "Failed to send OTP. Please try again.");
+      // Reset reCAPTCHA on error so it can be retried
+      if (recaptchaRef.current) { try { recaptchaRef.current.clear(); } catch (_) {} recaptchaRef.current = null; }
+    }
     setSendingOtp(false);
-    if (!res.success) { setError(res.message || "Failed to send OTP"); return; }
-    setOtpSent(true);
-    setOtpTimer(30);
-    setSuccess("OTP sent to +91 " + cleaned);
   };
 
   const handleVerifyOtp = async () => {
     if (otp.length !== 6) { setError("Enter the 6-digit OTP"); return; }
-    const cleaned = phone.replace(/\D/g, "");
+    if (!confirmationRef.current) { setError("Please request OTP first"); return; }
     setVerifyingOtp(true); setError("");
-    const res = await apiPost("/auth/register", { action: "verify_otp", phone: cleaned, otp });
+    try {
+      await confirmationRef.current.confirm(otp);
+      setOtpVerified(true);
+      setSuccess("Phone verified! ✓");
+    } catch (e) {
+      setError("Invalid OTP. Please try again.");
+    }
     setVerifyingOtp(false);
-    if (!res.success) { setError(res.message || "Invalid OTP"); return; }
-    setOtpVerified(true);
-    setSuccess("Phone verified! ✓");
   };
 
   const handleSubmit = async () => {
@@ -541,6 +576,8 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
           ← Back
         </button>
       )}
+      {/* Invisible reCAPTCHA mount point for Firebase Phone Auth */}
+      <div id="recaptcha-container" />
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: "2.5rem", width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
           <div style={{ width: 48, height: 48, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.2rem", margin: "0 auto 1rem", color: "#fff" }}>A</div>
@@ -1811,519 +1848,6 @@ function ExecutiveTemplate({ data }) {
               {p.description && <p style={{ margin: "3px 0 0", color: "#44403C", fontSize: 11 }}>{p.description}</p>}
             </div>
           ))}
-        </div>
-      )}
-    </div>
-  );
-}
-  const p = data.personal || {};
-  const accent = "#2563EB";
-  return (
-    <div style={{ fontFamily: "Georgia, serif", color: "#1a1a1a", background: "#fff", padding: "36px 40px", minHeight: 900, fontSize: 12, lineHeight: 1.5 }}>
-      <div style={{ textAlign: "center", marginBottom: 20, borderBottom: `2px solid ${accent}`, paddingBottom: 16 }}>
-        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "0.05em", color: "#111" }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 13, color: accent, marginTop: 3, fontStyle: "italic" }}>{p.title}</div>}
-        <div style={{ fontSize: 11, color: "#555", marginTop: 6, display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-          {p.email && <span>{p.email}</span>}
-          {p.phone && <span>{p.phone}</span>}
-          {p.location && <span>{p.location}</span>}
-          {p.linkedin && <span>{p.linkedin}</span>}
-          {p.website && <span>{p.website}</span>}
-        </div>
-      </div>
-      {data.summary && <ResumeSection title="Professional Summary" accent={accent}><p style={{ margin: 0, color: "#333", fontSize: 11.5 }}>{data.summary}</p></ResumeSection>}
-      {data.experience?.length > 0 && (
-        <ResumeSection title="Experience" accent={accent}>
-          {data.experience.map((e, i) => (
-            <div key={i} style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <strong style={{ fontSize: 12 }}>{e.position}</strong>
-                <span style={{ color: "#666", fontSize: 11 }}>{e.startDate}{e.endDate ? ` – ${e.endDate}` : e.current ? " – Present" : ""}</span>
-              </div>
-              <div style={{ color: accent, fontSize: 11, marginBottom: 3 }}>{e.company}{e.location ? ` · ${e.location}` : ""}</div>
-              {e.description && <p style={{ margin: 0, color: "#444", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
-            </div>
-          ))}
-        </ResumeSection>
-      )}
-      {data.education?.length > 0 && (
-        <ResumeSection title="Education" accent={accent}>
-          {data.education.map((e, i) => (
-            <div key={i} style={{ marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><strong>{e.degree}{e.field ? ` in ${e.field}` : ""}</strong><span style={{ color: "#666", fontSize: 11 }}>{e.endDate || e.startDate}</span></div>
-              <div style={{ color: "#555", fontSize: 11 }}>{e.school}{e.gpa ? ` · GPA: ${e.gpa}` : ""}</div>
-            </div>
-          ))}
-        </ResumeSection>
-      )}
-      {data.skills?.length > 0 && (
-        <ResumeSection title="Skills" accent={accent}>
-          {data.skills.map((s, i) => (
-            <div key={i} style={{ marginBottom: 4, fontSize: 11 }}><strong>{s.category}: </strong><span style={{ color: "#444" }}>{s.items}</span></div>
-          ))}
-        </ResumeSection>
-      )}
-      {data.projects?.length > 0 && (
-        <ResumeSection title="Projects" accent={accent}>
-          {data.projects.map((p, i) => (
-            <div key={i} style={{ marginBottom: 8 }}>
-              <strong style={{ fontSize: 12 }}>{p.name}</strong>{p.url ? <span style={{ color: accent, fontSize: 10, marginLeft: 6 }}>{p.url}</span> : null}
-              {p.technologies && <div style={{ color: "#666", fontSize: 10, marginTop: 2 }}>Tech: {p.technologies}</div>}
-              {p.description && <p style={{ margin: "3px 0 0", color: "#444", fontSize: 11 }}>{p.description}</p>}
-            </div>
-          ))}
-        </ResumeSection>
-      )}
-      {data.certifications?.length > 0 && (
-        <ResumeSection title="Certifications" accent={accent}>
-          {data.certifications.map((c, i) => (
-            <div key={i} style={{ fontSize: 11, marginBottom: 4 }}><strong>{c.name}</strong>{c.issuer ? ` · ${c.issuer}` : ""}{c.date ? ` (${c.date})` : ""}</div>
-          ))}
-        </ResumeSection>
-      )}
-      {data.languages?.length > 0 && (
-        <ResumeSection title="Languages" accent={accent}>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            {data.languages.map((l, i) => <span key={i} style={{ fontSize: 11 }}><strong>{l.language}</strong>{l.proficiency ? ` (${l.proficiency})` : ""}</span>)}
-          </div>
-        </ResumeSection>
-      )}
-    </div>
-  );
-}
-
-function ModernTemplate({ data }) {
-  const p = data.personal || {};
-  const accent = "#7C3AED";
-  return (
-    <div style={{ fontFamily: "Inter, Arial, sans-serif", color: "#1a1a1a", background: "#fff", display: "flex", minHeight: 900, fontSize: 12 }}>
-      <div style={{ width: 190, background: `linear-gradient(160deg,${accent},#4F46E5)`, color: "#fff", padding: "32px 20px", flexShrink: 0 }}>
-        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, fontWeight: 700, margin: "0 auto 14px" }}>{(p.name || "?")[0]?.toUpperCase()}</div>
-        <div style={{ textAlign: "center", marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255,255,255,0.2)" }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name || "Your Name"}</div>
-          {p.title && <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>{p.title}</div>}
-        </div>
-        <div style={{ fontSize: 10, lineHeight: 1.8, opacity: 0.9 }}>
-          {p.email && <div>✉ {p.email}</div>}
-          {p.phone && <div>📞 {p.phone}</div>}
-          {p.location && <div>📍 {p.location}</div>}
-          {p.linkedin && <div>in {p.linkedin}</div>}
-          {p.website && <div>🔗 {p.website}</div>}
-        </div>
-        {data.skills?.length > 0 && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8, opacity: 0.7 }}>Skills</div>
-            {data.skills.map((s, i) => (
-              <div key={i} style={{ marginBottom: 6 }}>
-                <div style={{ fontSize: 9, opacity: 0.7, marginBottom: 3 }}>{s.category}</div>
-                <div style={{ fontSize: 10, lineHeight: 1.6 }}>{s.items}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {data.languages?.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8, opacity: 0.7 }}>Languages</div>
-            {data.languages.map((l, i) => <div key={i} style={{ fontSize: 10, marginBottom: 3 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
-          </div>
-        )}
-      </div>
-      <div style={{ flex: 1, padding: "32px 28px", lineHeight: 1.5 }}>
-        {data.summary && <div style={{ marginBottom: 18 }}><div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 6 }}>About Me</div><p style={{ margin: 0, color: "#444", fontSize: 11.5 }}>{data.summary}</p></div>}
-        {data.experience?.length > 0 && (
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Experience</div>
-            {data.experience.map((e, i) => (
-              <div key={i} style={{ marginBottom: 12, paddingLeft: 12, borderLeft: `2px solid ${accent}` }}>
-                <div style={{ fontWeight: 700, fontSize: 12 }}>{e.position}</div>
-                <div style={{ color: accent, fontSize: 11 }}>{e.company}{e.location ? ` · ${e.location}` : ""} <span style={{ color: "#888", fontSize: 10, marginLeft: 8 }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span></div>
-                {e.description && <p style={{ margin: "4px 0 0", color: "#555", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-        {data.education?.length > 0 && (
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Education</div>
-            {data.education.map((e, i) => (
-              <div key={i} style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 700, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                <div style={{ color: "#555", fontSize: 11 }}>{e.school} <span style={{ color: "#888", fontSize: 10 }}>{e.endDate || e.startDate}</span></div>
-              </div>
-            ))}
-          </div>
-        )}
-        {data.projects?.length > 0 && (
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Projects</div>
-            {data.projects.map((p, i) => (
-              <div key={i} style={{ marginBottom: 10, paddingLeft: 12, borderLeft: `2px solid ${accent}` }}>
-                <strong style={{ fontSize: 12 }}>{p.name}</strong>
-                {p.technologies && <span style={{ color: "#888", fontSize: 10, marginLeft: 8 }}>{p.technologies}</span>}
-                {p.description && <p style={{ margin: "3px 0 0", color: "#555", fontSize: 11 }}>{p.description}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-        {data.certifications?.length > 0 && (
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Certifications</div>
-            {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}><strong>{c.name}</strong>{c.issuer ? ` · ${c.issuer}` : ""}{c.date ? ` (${c.date})` : ""}</div>)}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MinimalTemplate({ data }) {
-  const p = data.personal || {};
-  return (
-    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#111", background: "#fff", padding: "48px 52px", minHeight: 900, fontSize: 12, lineHeight: 1.6 }}>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-0.02em", color: "#000" }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 13, color: "#666", marginTop: 4, fontWeight: 400 }}>{p.title}</div>}
-        <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: 11, color: "#666", flexWrap: "wrap" }}>
-          {p.email && <span>{p.email}</span>}
-          {p.phone && <span>{p.phone}</span>}
-          {p.location && <span>{p.location}</span>}
-          {p.linkedin && <span>{p.linkedin}</span>}
-        </div>
-      </div>
-      {data.summary && <div style={{ marginBottom: 22 }}><p style={{ margin: 0, color: "#444", fontSize: 12, borderLeft: "2px solid #ddd", paddingLeft: 12 }}>{data.summary}</p></div>}
-      {data.experience?.length > 0 && (
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Experience</div>
-          {data.experience.map((e, i) => (
-            <div key={i} style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
-              <div style={{ fontSize: 10, color: "#888", paddingTop: 2 }}>{e.startDate}{e.current ? "–Present" : e.endDate ? `–${e.endDate}` : ""}</div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 12 }}>{e.position}</div>
-                <div style={{ color: "#666", fontSize: 11 }}>{e.company}{e.location ? `, ${e.location}` : ""}</div>
-                {e.description && <p style={{ margin: "4px 0 0", color: "#555", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {data.education?.length > 0 && (
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Education</div>
-          {data.education.map((e, i) => (
-            <div key={i} style={{ marginBottom: 10, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
-              <div style={{ fontSize: 10, color: "#888", paddingTop: 2 }}>{e.endDate || e.startDate}</div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                <div style={{ color: "#666", fontSize: 11 }}>{e.school}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {data.skills?.length > 0 && (
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Skills</div>
-          {data.skills.map((s, i) => (
-            <div key={i} style={{ marginBottom: 4, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
-              <div style={{ fontSize: 10, color: "#888" }}>{s.category}</div>
-              <div style={{ fontSize: 11, color: "#444" }}>{s.items}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {data.projects?.length > 0 && (
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Projects</div>
-          {data.projects.map((p, i) => (
-            <div key={i} style={{ marginBottom: 10, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
-              <div style={{ fontSize: 10, color: "#888", paddingTop: 2 }}>{p.technologies}</div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 12 }}>{p.name}</div>
-                {p.description && <p style={{ margin: "2px 0 0", color: "#555", fontSize: 11 }}>{p.description}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {(data.certifications?.length > 0 || data.languages?.length > 0) && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          {data.certifications?.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 8 }}>Certifications</div>
-              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, color: "#444", marginBottom: 4 }}>{c.name}{c.issuer ? ` · ${c.issuer}` : ""}</div>)}
-            </div>
-          )}
-          {data.languages?.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 8 }}>Languages</div>
-              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, color: "#444", marginBottom: 4 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProfessionalTemplate({ data }) {
-  const p = data.personal || {};
-  const accent = "#1E40AF";
-  return (
-    <div style={{ fontFamily: "Arial, sans-serif", color: "#1a1a1a", background: "#fff", minHeight: 900, fontSize: 12, lineHeight: 1.5 }}>
-      <div style={{ background: accent, color: "#fff", padding: "28px 40px 22px" }}>
-        <div style={{ fontSize: 28, fontWeight: 700 }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 13, opacity: 0.85, marginTop: 3 }}>{p.title}</div>}
-        <div style={{ display: "flex", gap: 20, marginTop: 10, fontSize: 10.5, opacity: 0.85, flexWrap: "wrap" }}>
-          {p.email && <span>✉ {p.email}</span>}
-          {p.phone && <span>☎ {p.phone}</span>}
-          {p.location && <span>⊙ {p.location}</span>}
-          {p.linkedin && <span>in {p.linkedin}</span>}
-        </div>
-      </div>
-      <div style={{ padding: "24px 40px" }}>
-        {data.summary && <div style={{ marginBottom: 18, padding: "12px 16px", background: "#EFF6FF", borderRadius: 6, fontSize: 11.5, color: "#334155" }}>{data.summary}</div>}
-        {data.experience?.length > 0 && (
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 10 }}>Work Experience</div>
-            {data.experience.map((e, i) => (
-              <div key={i} style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontWeight: 700, fontSize: 12.5 }}>{e.position}</span>
-                  <span style={{ fontSize: 10.5, color: "#666", background: "#F1F5F9", padding: "1px 8px", borderRadius: 100 }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span>
-                </div>
-                <div style={{ color: accent, fontSize: 11, marginBottom: 3 }}>{e.company}{e.location ? ` · ${e.location}` : ""}</div>
-                {e.description && <p style={{ margin: 0, color: "#444", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          <div>
-            {data.education?.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Education</div>
-                {data.education.map((e, i) => (
-                  <div key={i} style={{ marginBottom: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                    <div style={{ color: "#555", fontSize: 11 }}>{e.school}</div>
-                    <div style={{ color: "#888", fontSize: 10 }}>{e.endDate || e.startDate}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {data.certifications?.length > 0 && (
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Certifications</div>
-                {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 5 }}><strong>{c.name}</strong>{c.issuer ? <span style={{ color: "#666" }}> · {c.issuer}</span> : null}</div>)}
-              </div>
-            )}
-          </div>
-          <div>
-            {data.skills?.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Skills</div>
-                {data.skills.map((s, i) => (
-                  <div key={i} style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 600, color: "#555", marginBottom: 2 }}>{s.category}</div>
-                    <div style={{ fontSize: 11, color: "#333" }}>{s.items}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {data.languages?.length > 0 && (
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Languages</div>
-                {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
-              </div>
-            )}
-          </div>
-        </div>
-        {data.projects?.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 10 }}>Projects</div>
-            {data.projects.map((p, i) => (
-              <div key={i} style={{ marginBottom: 8 }}>
-                <strong style={{ fontSize: 12 }}>{p.name}</strong>{p.technologies && <span style={{ color: "#888", fontSize: 10, marginLeft: 8 }}>({p.technologies})</span>}
-                {p.description && <p style={{ margin: "2px 0 0", color: "#444", fontSize: 11 }}>{p.description}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CreativeTemplate({ data }) {
-  const p = data.personal || {};
-  const accent = "#DC2626";
-  return (
-    <div style={{ fontFamily: "'Arial', sans-serif", color: "#1a1a1a", background: "#fff", minHeight: 900, fontSize: 12, lineHeight: 1.5 }}>
-      <div style={{ background: "#111", color: "#fff", padding: "36px 40px", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: 0, right: 0, width: 200, height: 200, background: accent, borderRadius: "0 0 0 100%", opacity: 0.15 }} />
-        <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em" }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 14, color: accent, marginTop: 4, fontWeight: 600 }}>{p.title}</div>}
-        <div style={{ display: "flex", gap: 18, marginTop: 12, fontSize: 10.5, color: "rgba(255,255,255,0.7)", flexWrap: "wrap" }}>
-          {p.email && <span>{p.email}</span>}
-          {p.phone && <span>{p.phone}</span>}
-          {p.location && <span>{p.location}</span>}
-          {p.linkedin && <span>{p.linkedin}</span>}
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", minHeight: 700 }}>
-        <div style={{ background: "#F9FAFB", padding: "24px 20px", borderRight: "1px solid #E5E7EB" }}>
-          {data.skills?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Skills</div>
-              {data.skills.map((s, i) => (
-                <div key={i} style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#555", marginBottom: 3 }}>{s.category}</div>
-                  <div style={{ fontSize: 10.5, color: "#333", lineHeight: 1.6 }}>{s.items}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {data.education?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Education</div>
-              {data.education.map((e, i) => (
-                <div key={i} style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 11 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                  <div style={{ color: "#666", fontSize: 10 }}>{e.school}</div>
-                  <div style={{ color: "#999", fontSize: 10 }}>{e.endDate || e.startDate}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {data.certifications?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Certifications</div>
-              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 10.5, marginBottom: 6 }}><strong>{c.name}</strong>{c.issuer && <div style={{ color: "#666", fontSize: 10 }}>{c.issuer}</div>}</div>)}
-            </div>
-          )}
-          {data.languages?.length > 0 && (
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Languages</div>
-              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 10.5, marginBottom: 4 }}>{l.language}{l.proficiency && <span style={{ color: "#888" }}> · {l.proficiency}</span>}</div>)}
-            </div>
-          )}
-        </div>
-        <div style={{ padding: "24px 28px" }}>
-          {data.summary && <div style={{ marginBottom: 18 }}><div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 6 }}>About</div><p style={{ margin: 0, color: "#444", fontSize: 11.5 }}>{data.summary}</p></div>}
-          {data.experience?.length > 0 && (
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Experience</div>
-              {data.experience.map((e, i) => (
-                <div key={i} style={{ marginBottom: 14, paddingLeft: 10, borderLeft: `3px solid ${i === 0 ? accent : "#E5E7EB"}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 12.5 }}>{e.position}</div>
-                  <div style={{ color: "#666", fontSize: 11, marginBottom: 3 }}>{e.company} {e.startDate && <span style={{ color: "#999", fontSize: 10 }}>· {e.startDate}{e.current ? " – Now" : e.endDate ? ` – ${e.endDate}` : ""}</span>}</div>
-                  {e.description && <p style={{ margin: 0, color: "#555", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
-                </div>
-              ))}
-            </div>
-          )}
-          {data.projects?.length > 0 && (
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Projects</div>
-              {data.projects.map((p, i) => (
-                <div key={i} style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 12 }}>{p.name}{p.technologies && <span style={{ fontWeight: 400, color: "#888", fontSize: 10, marginLeft: 8 }}>{p.technologies}</span>}</div>
-                  {p.description && <p style={{ margin: "2px 0 0", color: "#555", fontSize: 11 }}>{p.description}</p>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExecutiveTemplate({ data }) {
-  const p = data.personal || {};
-  return (
-    <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", color: "#1a1a1a", background: "#fff", padding: "44px 48px", minHeight: 900, fontSize: 12, lineHeight: 1.6 }}>
-      <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "0.04em", color: "#0F172A" }}>{(p.name || "Your Name").toUpperCase()}</div>
-        {p.title && <div style={{ fontSize: 13, color: "#475569", marginTop: 5, fontStyle: "italic" }}>{p.title}</div>}
-        <div style={{ width: 60, height: 2, background: "#0F172A", margin: "12px auto" }} />
-        <div style={{ display: "flex", gap: 20, justifyContent: "center", fontSize: 10.5, color: "#555", flexWrap: "wrap" }}>
-          {p.email && <span>{p.email}</span>}
-          {p.phone && <span>{p.phone}</span>}
-          {p.location && <span>{p.location}</span>}
-          {p.linkedin && <span>{p.linkedin}</span>}
-        </div>
-      </div>
-      {data.summary && (
-        <div style={{ marginBottom: 20, textAlign: "center" }}>
-          <p style={{ margin: "0 auto", color: "#444", fontSize: 11.5, fontStyle: "italic", maxWidth: 480 }}>{data.summary}</p>
-        </div>
-      )}
-      {data.experience?.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 12 }}>Professional Experience</div>
-          {data.experience.map((e, i) => (
-            <div key={i} style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontWeight: 700, fontSize: 12.5 }}>{e.position}</span>
-                <span style={{ color: "#666", fontSize: 10.5, fontStyle: "italic" }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span>
-              </div>
-              <div style={{ color: "#475569", fontSize: 11, fontStyle: "italic", marginBottom: 3 }}>{e.company}{e.location ? `, ${e.location}` : ""}</div>
-              {e.description && <p style={{ margin: 0, color: "#444", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
-            </div>
-          ))}
-        </div>
-      )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 32px" }}>
-        {data.education?.length > 0 && (
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 10 }}>Education</div>
-            {data.education.map((e, i) => (
-              <div key={i} style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 700, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                <div style={{ color: "#475569", fontSize: 11, fontStyle: "italic" }}>{e.school}</div>
-                <div style={{ color: "#888", fontSize: 10 }}>{e.endDate || e.startDate}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {data.skills?.length > 0 && (
-          <div>
-            <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 10 }}>Core Competencies</div>
-            {data.skills.map((s, i) => (
-              <div key={i} style={{ marginBottom: 5 }}>
-                <span style={{ fontWeight: 700, fontSize: 11 }}>{s.category}: </span>
-                <span style={{ fontSize: 11, color: "#444" }}>{s.items}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      {data.projects?.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 10 }}>Key Projects</div>
-          {data.projects.map((p, i) => (
-            <div key={i} style={{ marginBottom: 8 }}>
-              <strong style={{ fontSize: 12 }}>{p.name}</strong>{p.technologies && <span style={{ fontSize: 10, color: "#888", marginLeft: 8, fontStyle: "italic" }}>({p.technologies})</span>}
-              {p.description && <p style={{ margin: "2px 0 0", color: "#444", fontSize: 11 }}>{p.description}</p>}
-            </div>
-          ))}
-        </div>
-      )}
-      {(data.certifications?.length > 0 || data.languages?.length > 0) && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 32px", marginTop: 12 }}>
-          {data.certifications?.length > 0 && (
-            <div>
-              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 8 }}>Certifications</div>
-              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}>{c.name}{c.issuer ? ` · ${c.issuer}` : ""}</div>)}
-            </div>
-          )}
-          {data.languages?.length > 0 && (
-            <div>
-              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 8 }}>Languages</div>
-              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
-            </div>
-          )}
         </div>
       )}
     </div>

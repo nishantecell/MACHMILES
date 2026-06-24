@@ -36,86 +36,11 @@ async function sendWelcomeEmail(email, name) {
   }
 }
 
-async function sendOtpSms(phone, otp) {
-  const apiKey = process.env.FAST2SMS_API_KEY;
-  if (!apiKey) {
-    console.warn('FAST2SMS_API_KEY not set — OTP:', otp);
-    return { ok: true };
-  }
-  const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', authorization: apiKey },
-    body: JSON.stringify({
-      route: 'otp',
-      variables_values: otp,
-      numbers: phone,
-      flash: 0,
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.return === false) {
-    throw new Error(data.message?.[0] || 'Failed to send OTP');
-  }
-  return data;
-}
-
-function generateOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') return badReq(res, 'Method not allowed');
 
-  const { action, phone, otp, name, email, password } = req.body || {};
-
-  // --- Send OTP ---
-  if (action === 'send_otp') {
-    const cleaned = (phone || '').replace(/\D/g, '');
-    if (cleaned.length !== 10) return badReq(res, 'Enter a valid 10-digit Indian mobile number');
-
-    const code = generateOtp();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-    const { error: dbErr } = await supabase
-      .from('phone_otps')
-      .upsert({ phone: cleaned, otp: code, expires_at: expiresAt }, { onConflict: 'phone' });
-    if (dbErr) {
-      console.error('OTP DB error:', dbErr.message);
-      return err(res, 'Could not generate OTP');
-    }
-
-    try {
-      await sendOtpSms(cleaned, code);
-    } catch (e) {
-      console.error('SMS error:', e.message);
-      return err(res, 'Failed to send OTP via SMS');
-    }
-
-    return ok(res, null, 'OTP sent successfully');
-  }
-
-  // --- Verify OTP ---
-  if (action === 'verify_otp') {
-    const cleaned = (phone || '').replace(/\D/g, '');
-    if (!cleaned || !otp) return badReq(res, 'Phone and OTP are required');
-
-    const { data: record, error: dbErr } = await supabase
-      .from('phone_otps')
-      .select('otp, expires_at')
-      .eq('phone', cleaned)
-      .single();
-
-    if (dbErr || !record) return badReq(res, 'OTP not found. Please request a new one.');
-    if (new Date(record.expires_at) < new Date()) return badReq(res, 'OTP has expired. Please request a new one.');
-    if (record.otp !== String(otp)) return badReq(res, 'Invalid OTP. Please try again.');
-
-    await supabase.from('phone_otps').delete().eq('phone', cleaned);
-
-    return ok(res, null, 'Phone verified successfully');
-  }
-
-  // --- Regular Registration ---
+  const { name, email, password, phone } = req.body || {};
   if (!name || !email || !password) return badReq(res, 'Name, email and password are required');
   if (password.length < 6) return badReq(res, 'Password must be at least 6 characters');
 
