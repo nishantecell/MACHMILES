@@ -447,6 +447,13 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -454,27 +461,54 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
 
+  useEffect(() => {
+    if (otpTimer <= 0) return;
+    const t = setTimeout(() => setOtpTimer(n => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpTimer]);
+
   const handleForgotPassword = async () => {
     if (!forgotEmail.trim()) { setError("Enter your email address"); return; }
     setForgotLoading(true); setError("");
-    const { error: e } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
-      redirectTo: window.location.origin,
-    });
+    const { error: e } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), { redirectTo: window.location.origin });
     setForgotLoading(false);
     if (e) setError(e.message);
     else { setSuccess("Password reset email sent! Check your inbox."); setForgotMode(false); }
   };
 
+  const handleSendOtp = async () => {
+    const cleaned = phone.replace(/\D/g, "");
+    if (cleaned.length !== 10) { setError("Enter a valid 10-digit Indian mobile number"); return; }
+    setSendingOtp(true); setError("");
+    const res = await apiPost("/auth/register", { action: "send_otp", phone: cleaned });
+    setSendingOtp(false);
+    if (!res.success) { setError(res.message || "Failed to send OTP"); return; }
+    setOtpSent(true);
+    setOtpTimer(30);
+    setSuccess("OTP sent to +91 " + cleaned);
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) { setError("Enter the 6-digit OTP"); return; }
+    const cleaned = phone.replace(/\D/g, "");
+    setVerifyingOtp(true); setError("");
+    const res = await apiPost("/auth/register", { action: "verify_otp", phone: cleaned, otp });
+    setVerifyingOtp(false);
+    if (!res.success) { setError(res.message || "Invalid OTP"); return; }
+    setOtpVerified(true);
+    setSuccess("Phone verified! ✓");
+  };
+
   const handleSubmit = async () => {
     if (!email.trim() || !pass.trim()) { setError("Please fill in all fields"); return; }
     if (mode === "signup" && !name.trim()) { setError("Please enter your name"); return; }
+    if (mode === "signup" && !otpVerified) { setError("Please verify your phone number"); return; }
     if (pass.length < 6) { setError("Password must be at least 6 characters"); return; }
     setLoading(true); setError(""); setSuccess("");
     try {
       if (mode === "signup") {
-        const res = await apiPost("/auth/register", { name: name.trim(), email: email.trim(), password: pass });
+        const res = await apiPost("/auth/register", { name: name.trim(), email: email.trim(), password: pass, phone: phone.replace(/\D/g, "") });
         if (!res.success) throw new Error(res.message || "Registration failed");
-        // Auto-login after signup
         const loginRes = await apiPost("/auth/login", { email: email.trim(), password: pass });
         if (!loginRes.success) { setSuccess("Account created! Please sign in."); setLoading(false); return; }
         setTokens(loginRes.data.accessToken, loginRes.data.refreshToken);
@@ -497,14 +531,13 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     if (error) setError(error.message);
   };
 
+  const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" };
+
   return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter,sans-serif", position: "relative" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
       {onBack && (
-        <button onClick={onBack} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: "0.875rem", transition: "all 0.15s" }}
-          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-          onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-        >
+        <button onClick={onBack} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: "0.875rem" }}>
           ← Back
         </button>
       )}
@@ -531,12 +564,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
         {forgotMode ? (
           <>
             <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.85rem", marginBottom: "1rem" }}>Enter your email and we'll send a reset link.</p>
-            <input
-              value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
-              placeholder="Email address" type="email"
-              onKeyDown={e => e.key === "Enter" && handleForgotPassword()}
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box", marginBottom: 12 }}
-            />
+            <input value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="Email address" type="email" onKeyDown={e => e.key === "Enter" && handleForgotPassword()} style={{ ...inputStyle, marginBottom: 12 }} />
             <button onClick={handleForgotPassword} disabled={forgotLoading} style={{ width: "100%", padding: 13, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: "1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: forgotLoading ? 0.7 : 1 }}>
               {forgotLoading && <Spinner />}Send Reset Link
             </button>
@@ -548,21 +576,48 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {mode === "signup" && (
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }} />
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" style={inputStyle} />
               )}
-              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" type="email"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }} />
-              <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Password (min 6 characters)" type="password"
-                onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" type="email" style={inputStyle} />
+              <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Password (min 6 characters)" type="password" onKeyDown={e => e.key === "Enter" && !otpSent && handleSubmit()} style={inputStyle} />
+
+              {/* Phone + OTP — signup only */}
+              {mode === "signup" && (
+                <div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "rgba(255,255,255,0.5)", fontSize: "0.95rem", whiteSpace: "nowrap" }}>+91</div>
+                    <input value={phone} onChange={e => { setPhone(e.target.value); setOtpSent(false); setOtpVerified(false); setOtp(""); }} placeholder="Mobile number" type="tel" maxLength={10}
+                      disabled={otpVerified}
+                      style={{ ...inputStyle, flex: 1, background: otpVerified ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.05)", border: `1px solid ${otpVerified ? "rgba(16,185,129,0.4)" : "rgba(255,255,255,0.1)"}` }} />
+                    {otpVerified ? (
+                      <div style={{ display: "flex", alignItems: "center", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 10, padding: "12px 14px", color: "#10B981", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>✓ Verified</div>
+                    ) : (
+                      <button onClick={handleSendOtp} disabled={sendingOtp || otpTimer > 0} style={{ whiteSpace: "nowrap", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, padding: "12px 14px", color: "#fff", fontWeight: 600, fontSize: "0.82rem", cursor: sendingOtp || otpTimer > 0 ? "not-allowed" : "pointer", opacity: sendingOtp || otpTimer > 0 ? 0.6 : 1 }}>
+                        {sendingOtp ? <Spinner /> : otpTimer > 0 ? `Resend (${otpTimer}s)` : otpSent ? "Resend OTP" : "Send OTP"}
+                      </button>
+                    )}
+                  </div>
+
+                  {otpSent && !otpVerified && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <input value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Enter 6-digit OTP" type="tel" maxLength={6}
+                        onKeyDown={e => e.key === "Enter" && handleVerifyOtp()}
+                        style={{ ...inputStyle, flex: 1, letterSpacing: "0.2em", textAlign: "center", fontSize: "1.1rem" }} />
+                      <button onClick={handleVerifyOtp} disabled={verifyingOtp} style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.4)", borderRadius: 10, padding: "12px 16px", color: "#10B981", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", whiteSpace: "nowrap" }}>
+                        {verifyingOtp ? <Spinner /> : "Verify"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
             {mode === "login" && (
               <div style={{ textAlign: "right", marginTop: 8 }}>
                 <button onClick={() => { setForgotMode(true); setError(""); setForgotEmail(email); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: "0.8rem" }}>Forgot password?</button>
               </div>
             )}
-            <button onClick={handleSubmit} disabled={loading} style={{ width: "100%", marginTop: "1.25rem", padding: 13, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: "1rem", cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: loading ? 0.7 : 1 }}>
+            <button onClick={handleSubmit} disabled={loading || (mode === "signup" && !otpVerified)} style={{ width: "100%", marginTop: "1.25rem", padding: 13, background: mode === "signup" && !otpVerified ? "rgba(255,255,255,0.08)" : "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, color: mode === "signup" && !otpVerified ? "rgba(255,255,255,0.3)" : "#fff", fontWeight: 700, fontSize: "1rem", cursor: loading || (mode === "signup" && !otpVerified) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: loading ? 0.7 : 1 }}>
               {loading && <Spinner />}{mode === "login" ? "Sign in" : "Create account"}
             </button>
             <p style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", fontSize: "0.875rem", marginTop: "1.25rem" }}>
