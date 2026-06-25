@@ -1,8 +1,9 @@
-// api/jobs/index.js
-const supabase = require('../_lib/supabase');
-const { handleCors, ok, err } = require('../_lib/helpers');
+import { createClient } from '@supabase/supabase-js';
+import { handleCors, ok, err } from '../_lib/helpers.js';
 
-module.exports = async (req, res) => {
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+export default async function handler(req, res) {
   if (handleCors(req, res)) return;
   if (req.method !== 'GET') return;
 
@@ -26,11 +27,11 @@ module.exports = async (req, res) => {
     if (error) throw error;
 
     return ok(res, {
-      jobs: data,
-      pagination: { total: count, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(count / limit) },
+      jobs: data || [],
+      pagination: { total: count || 0, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil((count || 0) / limit) },
     });
   } catch (e) {
     console.error('Jobs error:', e);
     return err(res, 'Failed to fetch jobs');
   }
-};
+}
