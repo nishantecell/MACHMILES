@@ -1,33 +1,30 @@
-// api/applications/[id].js
-const supabase = require('../_lib/supabase');
-const { handleCors, ok, badReq, notFound, err, authenticate } = require('../_lib/helpers');
+import { createClient } from '@supabase/supabase-js';
+import { handleCors, ok, badReq, err, authenticate } from '../_lib/helpers.js';
 
-module.exports = async (req, res) => {
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+export default async function handler(req, res) {
   if (handleCors(req, res)) return;
 
   const user = await authenticate(req, res);
   if (!user) return;
 
   const { id } = req.query;
-  if (!id || isNaN(id)) return badReq(res, 'Invalid ID');
+  if (!id) return badReq(res, 'Invalid ID');
 
   try {
-    // Check ownership
     const { data: existing } = await supabase
       .from('applications').select('*').eq('id', id).eq('user_id', user.id).single();
-    if (!existing) return notFound(res, 'Application not found');
+    if (!existing) return res.status(404).json({ success: false, message: 'Application not found' });
 
     if (req.method === 'GET') return ok(res, existing);
 
     if (req.method === 'PUT') {
       const updates = {};
-      const allowed = ['company','position','job_url','status','match_score',
-                       'cover_letter','notes','resume_id','interview_date',
-                       'interview_type','offer_amount','rejection_reason'];
-      allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
-
-      const { data, error } = await supabase
-        .from('applications').update(updates).eq('id', id).select().single();
+      const allowed = ['company', 'position', 'job_url', 'status', 'match_score',
+                       'cover_letter', 'notes', 'interview_date', 'offer_amount', 'rejection_reason'];
+      allowed.forEach(f => { if (req.body?.[f] !== undefined) updates[f] = req.body[f]; });
+      const { data, error } = await supabase.from('applications').update(updates).eq('id', id).select().single();
       if (error) throw error;
       return ok(res, data, 'Application updated');
     }
@@ -39,7 +36,7 @@ module.exports = async (req, res) => {
 
     return badReq(res, 'Method not allowed');
   } catch (e) {
-    console.error('Application[id] error:', e);
+    console.error('Application[id] error:', e.message);
     return err(res, 'Request failed');
   }
-};
+}

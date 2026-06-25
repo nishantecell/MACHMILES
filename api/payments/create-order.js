@@ -1,14 +1,15 @@
-// api/payments/create-order.js
-const Razorpay = require('razorpay');
-const supabase = require('../_lib/supabase');
-const { handleCors, ok, badReq, err, authenticate } = require('../_lib/helpers');
+import Razorpay from 'razorpay';
+import { createClient } from '@supabase/supabase-js';
+import { handleCors, ok, badReq, err, authenticate } from '../_lib/helpers.js';
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 const PLANS = {
-  pro:     { amount: 59900,  name: 'AutoApply AI Pro'     },
-  premium: { amount: 99900,  name: 'AutoApply AI Premium' },
+  pro:     { amount: 59900, name: 'AutoApply AI Pro' },
+  premium: { amount: 99900, name: 'AutoApply AI Premium' },
 };
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') return badReq(res, 'Method not allowed');
 
@@ -26,15 +27,9 @@ module.exports = async (req, res) => {
 
     let amount = PLANS[plan].amount;
 
-    // Apply promo code
     if (promo_code) {
       const { data: promo } = await supabase
-        .from('promo_codes')
-        .select('*')
-        .eq('code', promo_code.toUpperCase())
-        .eq('is_active', true)
-        .single();
-
+        .from('promo_codes').select('*').eq('code', promo_code.toUpperCase()).eq('is_active', true).single();
       if (promo) {
         amount = promo.discount_type === 'percentage'
           ? Math.round(amount * (1 - promo.discount_value / 100))
@@ -55,10 +50,10 @@ module.exports = async (req, res) => {
       currency:  'INR',
       key_id:    process.env.RAZORPAY_KEY_ID,
       plan_name: PLANS[plan].name,
-      user:      { name: user.name, email: user.email },
+      user:      { name: user.full_name, email: user.email },
     });
   } catch (e) {
-    console.error('Create order error:', e);
+    console.error('Create order error:', e.message);
     return err(res, 'Failed to create order');
   }
-};
+}
