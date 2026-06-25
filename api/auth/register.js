@@ -5,6 +5,58 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 async function sendWelcomeEmail(email, name) {
   if (!process.env.RESEND_API_KEY) return;
+  const firstName = name.split(' ')[0];
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to AutoApply AI</title></head><body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',Arial,sans-serif">
+<div style="max-width:620px;margin:32px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+  <div style="background:linear-gradient(135deg,#3B82F6,#8B5CF6);padding:40px 40px 32px;text-align:center">
+    <h1 style="margin:0;color:#fff;font-size:28px;font-weight:800;letter-spacing:-0.5px">AutoApply AI</h1>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:14px">by MACHMILES</p>
+  </div>
+  <div style="padding:40px">
+    <p style="margin:0 0 16px;font-size:16px;color:#1e293b">Hi <strong>${firstName}</strong>,</p>
+    <p style="margin:0 0 16px;font-size:16px;color:#1e293b">Welcome to <strong>AutoApply AI</strong>! 👋</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;line-height:1.7">We're excited to have you join thousands of job seekers who are making their job search faster, smarter, and more efficient with AI.</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;line-height:1.7">Searching and applying for jobs can be time-consuming, but it doesn't have to be. Our AI is designed to help you discover relevant opportunities and apply to multiple jobs in just a few clicks—so you can spend less time applying and more time preparing for interviews.</p>
+
+    <div style="background:#f8fafc;border-left:4px solid #3B82F6;border-radius:8px;padding:24px;margin:28px 0">
+      <p style="margin:0 0 14px;font-size:15px;font-weight:700;color:#1e293b">Here's what you can do next:</p>
+      <p style="margin:0 0 10px;font-size:14px;color:#475569">✅ Complete your profile</p>
+      <p style="margin:0 0 10px;font-size:14px;color:#475569">✅ Upload your latest resume</p>
+      <p style="margin:0 0 10px;font-size:14px;color:#475569">✅ Set your job preferences</p>
+      <p style="margin:0;font-size:14px;color:#475569">✅ Let our AI start finding and applying to matching opportunities on your behalf</p>
+    </div>
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;line-height:1.6">The more complete your profile, the better our AI can match you with the right roles.</p>
+
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 28px">
+
+    <p style="margin:0 0 14px;font-size:15px;font-weight:700;color:#1e293b">Want to maximize your job search?</p>
+    <p style="margin:0 0 16px;font-size:15px;color:#475569;line-height:1.7">Our <strong>Premium Plan</strong> unlocks the full power of AI, including:</p>
+    <div style="background:#faf5ff;border-radius:10px;padding:20px 24px;margin:0 0 20px">
+      <p style="margin:0 0 8px;font-size:14px;color:#4c1d95">• Unlimited AI-powered job applications</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#4c1d95">• Priority application processing</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#4c1d95">• Smart job matching with higher accuracy</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#4c1d95">• Advanced resume optimization</p>
+      <p style="margin:0;font-size:14px;color:#4c1d95">• Early access to new features</p>
+    </div>
+    <p style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.6">Many of our users upgrade when they're actively job hunting because it allows them to apply consistently without spending hours every day.</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.6">There's absolutely no rush—you can explore the platform first and upgrade whenever you're ready.</p>
+    <div style="text-align:center;margin:0 0 32px">
+      <a href="https://machmiles.com" style="display:inline-block;background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 36px;border-radius:10px">👉 Upgrade whenever you're ready</a>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 24px">
+
+    <p style="margin:0 0 16px;font-size:15px;color:#475569;line-height:1.7">Your next opportunity could be just one application away.</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.6">If you ever have questions or need assistance, simply reply to this email. Our team is always happy to help.</p>
+    <p style="margin:0 0 4px;font-size:14px;color:#475569">We wish you the very best in your job search and look forward to being part of your career journey.</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#475569">Warm regards,<br><strong>AutoApply AI by MACHMILES</strong></p>
+    <p style="margin:0;font-size:13px;color:#94a3b8;font-style:italic">Helping you land your next opportunity—powered by AI.</p>
+  </div>
+  <div style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0">
+    <p style="margin:0;font-size:12px;color:#94a3b8">© 2026 AutoApply AI by MACHMILES · <a href="https://machmiles.com" style="color:#3B82F6;text-decoration:none">machmiles.com</a></p>
+  </div>
+</div>
+</body></html>`;
   try {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -12,8 +64,8 @@ async function sendWelcomeEmail(email, name) {
       body: JSON.stringify({
         from: 'AutoApply AI <noreply@machmiles.com>',
         to: email,
-        subject: 'Welcome to AutoApply AI 🚀',
-        html: `<div style="font-family:Inter,sans-serif;background:#020817;color:#fff;padding:40px;max-width:560px;margin:0 auto;border-radius:16px"><h1 style="font-size:28px;font-weight:800;margin:0 0 12px">Welcome, ${name}! 🎉</h1><p style="color:rgba(255,255,255,0.6);line-height:1.7;margin:0 0 24px">Your AI-powered job search is now active.</p><p style="color:rgba(255,255,255,0.4);font-size:13px;margin:0">© 2026 AutoApply AI</p></div>`,
+        subject: `Welcome to AutoApply AI, ${firstName}! 🚀`,
+        html,
       }),
     });
   } catch (e) {
