@@ -845,22 +845,40 @@ function Onboarding({ user, onComplete }) {
   const [uploaded, setUploaded] = useState(false);
   const [uploadedName, setUploadedName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [goToResume, setGoToResume] = useState(false);
 
   const handleResumeUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const res = await uploadResume(file);
-    if (res.success) { setUploaded(true); setUploadedName(file.name); }
-    else alert("Upload failed: " + res.message);
+    try {
+      const text = await (async () => {
+        if (file.name.endsWith(".pdf")) {
+          const ab = await file.arrayBuffer();
+          const bytes = new Uint8Array(ab);
+          let str = "";
+          for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+          const matches = str.match(/\(([^)]{2,200})\)/g) || [];
+          return matches.map(m => m.slice(1,-1)).join(" ");
+        }
+        return file.text ? await file.text() : "";
+      })();
+      const parsed = await parseResumeWithAI(text);
+      const title = (parsed?.basics?.name || file.name.replace(/\.[^.]+$/, "")) + " — Resume";
+      const res = await apiPost("/resumes", { title, template: "classic", resume_data: parsed || {} });
+      if (res.success || res.data) { setUploaded(true); setUploadedName(file.name); }
+      else alert("Upload failed: " + (res.message || "Unknown error"));
+    } catch (err) {
+      alert("Upload failed: " + err.message);
+    }
     setUploading(false);
   };
 
-  const complete = async () => {
+  const complete = async (navToResume = false) => {
     setSaving(true);
     await supabase.from("profiles").upsert({ id: user.id, desired_job_title: prefs.title, location: prefs.location, work_type: prefs.remote, salary: prefs.salary, experience_level: prefs.level, onboarded: true });
     setSaving(false);
-    onComplete();
+    onComplete(navToResume ? "Resume" : null);
   };
 
   return (
@@ -877,10 +895,16 @@ function Onboarding({ user, onComplete }) {
             <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: "2rem" }}>Our AI will extract your skills and experience automatically.</p>
             <label style={{ display: "block", border: "2px dashed rgba(59,130,246,0.4)", borderRadius: 16, padding: "3rem", textAlign: "center", cursor: uploading ? "wait" : "pointer", background: uploaded ? "rgba(16,185,129,0.05)" : "rgba(59,130,246,0.03)" }}>
               <input type="file" accept=".pdf,.doc,.docx" onChange={handleResumeUpload} style={{ display: "none" }} />
-              {uploading ? <><div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>⏳</div><div style={{ fontWeight: 600, color: "#93C5FD" }}>Uploading...</div></> :
-               uploaded ? <><div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>✅</div><div style={{ fontWeight: 600, color: "#10B981" }}>Resume uploaded!</div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.85rem", marginTop: 4 }}>{uploadedName}</div></> :
+              {uploading ? <><div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>⏳</div><div style={{ fontWeight: 600, color: "#93C5FD" }}>Uploading & parsing...</div></> :
+               uploaded ? <><div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>✅</div><div style={{ fontWeight: 600, color: "#10B981" }}>Resume saved!</div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.85rem", marginTop: 4 }}>{uploadedName}</div></> :
                <><div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>📄</div><div style={{ fontWeight: 600 }}>Click to upload your resume</div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.85rem", marginTop: 4 }}>PDF or DOCX · Max 10MB</div></>}
             </label>
+            <div style={{ textAlign: "center", marginTop: "1.25rem" }}>
+              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.85rem" }}>— or —</span>
+            </div>
+            <button onClick={() => complete(true)} style={{ width: "100%", marginTop: "1rem", padding: "14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, color: "rgba(255,255,255,0.8)", fontWeight: 600, fontSize: "0.95rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              ✏️ Create your own resume with templates
+            </button>
           </div>
         )}
 
@@ -946,7 +970,7 @@ function useMobile() {
 
 // ─── APP SHELL ────────────────────────────────────────────────────────────────
 function AppShell({ user, onLogout, onGoHome }) {
-  const [activeNav, setActiveNav] = useState("Dashboard");
+  const [activeNav, setActiveNav] = useState(() => { const n = window.__onboardingNav; if (n) { window.__onboardingNav = null; return n; } return "Dashboard"; });
   const [autoMode, setAutoMode] = useState(true);
   const [profile, setProfile] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -4634,27 +4658,3 @@ export default function App() {
 
   if (screen === "loading") return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "Inter,sans-serif", flexDirection: "column", gap: 16 }}>
-      <div style={{ width: 48, height: 48, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.2rem" }}>A</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Spinner /><span style={{ color: "rgba(255,255,255,0.5)" }}>Loading AutoApply AI...</span></div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-  const goToPolicy = (key) => {
-    const urlMap = { privacy: "/privacy-policy", terms: "/terms", refund: "/refund-policy", cancellation: "/cancellation-policy" };
-    window.history.pushState(null, "", urlMap[key] || "/");
-    setScreen(key);
-  };
-  const goHome = () => { window.history.pushState(null, "", "/"); setScreen("landing"); };
-
-  if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
-  if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} onBack={() => setScreen("landing")} />;
-  if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} onBack={() => setScreen("landing")} />;
-  if (screen === "reset-password") return <ResetPasswordScreen onDone={() => { window.location.hash = ""; setScreen("login"); }} />;
-  if (screen === "onboarding") return <Onboarding user={user} onComplete={() => setScreen("app")} />;
-  if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); goHome(); }} onGoHome={goHome} />;
-  if (screen === "terms") return <PolicyPage title="Terms & Conditions" onBack={goHome} content={TERMS_CONTENT} />;
-  if (screen === "privacy") return <PolicyPage title="Privacy Policy" onBack={goHome} content={PRIVACY_CONTENT} />;
-  if (screen === "refund") return <PolicyPage title="Refund Policy" onBack={goHome} content={REFUND_CONTENT} />;
-  if (screen === "cancellation") return <PolicyPage title="Cancellation Policy" onBack={goHome} content={CANCELLATION_CONTENT} />;
-  return null;
-}
