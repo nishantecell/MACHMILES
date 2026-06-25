@@ -719,7 +719,6 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const confirmationRef = useRef(null);
-  const recaptchaRef = useRef(null);
 
   useEffect(() => {
     if (otpTimer <= 0) return;
@@ -727,25 +726,33 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     return () => clearTimeout(t);
   }, [otpTimer]);
 
-  useEffect(() => {
-    return () => { if (recaptchaRef.current) { try { recaptchaRef.current.clear(); } catch (_) {} recaptchaRef.current = null; } };
-  }, []);
+  const getRecaptcha = () => {
+    if (!window._recaptchaVerifier) {
+      window._recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", { size: "invisible" });
+    }
+    return window._recaptchaVerifier;
+  };
+
+  const resetRecaptcha = () => {
+    if (window._recaptchaVerifier) {
+      try { window._recaptchaVerifier.clear(); } catch (_) {}
+      window._recaptchaVerifier = null;
+    }
+  };
 
   const handleSendOtp = async () => {
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length !== 10) { setError("Enter a valid 10-digit Indian mobile number"); return; }
     setSendingOtp(true); setError("");
     try {
-      if (!recaptchaRef.current) {
-        recaptchaRef.current = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", { size: "invisible" });
-      }
-      const confirmation = await signInWithPhoneNumber(firebaseAuth, "+91" + cleaned, recaptchaRef.current);
+      const recaptcha = getRecaptcha();
+      const confirmation = await signInWithPhoneNumber(firebaseAuth, "+91" + cleaned, recaptcha);
       confirmationRef.current = confirmation;
       setOtpSent(true); setOtpTimer(30);
       setSuccess("OTP sent to +91 " + cleaned);
     } catch (e) {
+      resetRecaptcha();
       setError(e.message || "Failed to send OTP. Please try again.");
-      if (recaptchaRef.current) { try { recaptchaRef.current.clear(); } catch (_) {} recaptchaRef.current = null; }
     }
     setSendingOtp(false);
   };
