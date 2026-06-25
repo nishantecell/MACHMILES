@@ -776,7 +776,7 @@ function useMobile() {
 }
 
 // ─── APP SHELL ────────────────────────────────────────────────────────────────
-function AppShell({ user, onLogout }) {
+function AppShell({ user, onLogout, onHome }) {
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [autoMode, setAutoMode] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -809,7 +809,7 @@ function AppShell({ user, onLogout }) {
   const Sidebar = () => (
     <aside style={{ width: 240, flexShrink: 0, background: "rgba(2,8,23,0.98)", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", ...(isMobile ? { position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 200, transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.25s ease", boxShadow: sidebarOpen ? "4px 0 40px rgba(0,0,0,0.6)" : "none" } : {}) }}>
       <div style={{ padding: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div onClick={onHome} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800 }}>A</div>
           <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700 }}>AutoApply <span style={{ color: "#3B82F6" }}>AI</span></span>
         </div>
@@ -3405,6 +3405,6 @@ export default function App() {
   if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} onBack={() => setScreen("landing")} />;
   if (screen === "reset-password") return <ResetPasswordScreen onDone={() => { window.location.hash = ""; setScreen("login"); }} />;
   if (screen === "onboarding") return <Onboarding user={user} onComplete={() => setScreen("app")} />;
-  if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); setScreen("landing"); }} />;
+  if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); setScreen("landing"); }} onHome={() => setScreen("landing")} />;
   return null;
 }
