@@ -727,9 +727,17 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
   }, [otpTimer]);
 
   const getRecaptcha = () => {
-    if (!window._recaptchaVerifier) {
-      window._recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", { size: "invisible" });
+    const container = document.getElementById("recaptcha-container");
+    if (window._recaptchaVerifier) {
+      // If container was remounted (empty), clear old instance first
+      if (!container || container.childElementCount === 0) {
+        try { window._recaptchaVerifier.clear(); } catch (_) {}
+        window._recaptchaVerifier = null;
+      } else {
+        return window._recaptchaVerifier;
+      }
     }
+    window._recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", { size: "invisible" });
     return window._recaptchaVerifier;
   };
 
