@@ -4658,3 +4658,27 @@ export default function App() {
 
   if (screen === "loading") return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "Inter,sans-serif", flexDirection: "column", gap: 16 }}>
+      <div style={{ width: 48, height: 48, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.2rem" }}>A</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Spinner /><span style={{ color: "rgba(255,255,255,0.5)" }}>Loading AutoApply AI...</span></div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+  const goToPolicy = (key) => {
+    const urlMap = { privacy: "/privacy-policy", terms: "/terms", refund: "/refund-policy", cancellation: "/cancellation-policy" };
+    window.history.pushState(null, "", urlMap[key] || "/");
+    setScreen(key);
+  };
+  const goHome = () => { window.history.pushState(null, "", "/"); setScreen("landing"); };
+
+  if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
+  if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} onBack={() => setScreen("landing")} />;
+  if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} onBack={() => setScreen("landing")} />;
+  if (screen === "reset-password") return <ResetPasswordScreen onDone={() => { window.location.hash = ""; setScreen("login"); }} />;
+  if (screen === "onboarding") return <Onboarding user={user} onComplete={(nav) => { setScreen("app"); if (nav) setTimeout(() => window.__onboardingNav = nav, 100); }} />;
+  if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); goHome(); }} onGoHome={goHome} />;
+  if (screen === "terms") return <PolicyPage title="Terms & Conditions" onBack={goHome} content={TERMS_CONTENT} />;
+  if (screen === "privacy") return <PolicyPage title="Privacy Policy" onBack={goHome} content={PRIVACY_CONTENT} />;
+  if (screen === "refund") return <PolicyPage title="Refund Policy" onBack={goHome} content={REFUND_CONTENT} />;
+  if (screen === "cancellation") return <PolicyPage title="Cancellation Policy" onBack={goHome} content={CANCELLATION_CONTENT} />;
+  return null;
+}
