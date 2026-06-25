@@ -87,7 +87,7 @@ export default async function handler(req, res) {
       id: data.user.id, full_name: name.trim(),
       email: email.trim().toLowerCase(), phone: cleanedPhone || null, plan: 'free', onboarded: false,
     });
-    sendWelcomeEmail(email.trim().toLowerCase(), name.trim());
+    await sendWelcomeEmail(email.trim().toLowerCase(), name.trim());
     return res.status(201).json({ success: true, message: 'Account created successfully!', data: { userId: data.user.id, email: data.user.email } });
   } catch (e) {
     console.error('Register error:', e.message);
