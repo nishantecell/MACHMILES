@@ -1308,9 +1308,9 @@ function DashboardPage({ user }) {
 
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem" }}>
         <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", margin: "0 0 1.25rem" }}>Recent Applications</h3>
-        {stats.recent.length === 0 ? (
+        {(stats.recent || []).length === 0 ? (
           <div style={{ textAlign: "center", color: "rgba(255,255,255,0.3)", padding: "2rem", fontSize: "0.875rem" }}>No applications yet. Use the Jobs page or turn on Auto Apply.</div>
-        ) : stats.recent.map((a, i) => (
+        ) : (stats.recent || []).map((a, i) => (
           <div key={a.id || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "0.75rem", background: "rgba(255,255,255,0.02)", borderRadius: 10, marginBottom: 6 }}>
             <div style={{ width: 36, height: 36, borderRadius: 8, background: ["#635BFF","#3395FF","#10B981","#F59E0B","#EF4444"][i % 5], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: "0.8rem", flexShrink: 0 }}>{a.company?.[0] || "?"}</div>
             <div style={{ flex: 1 }}>
