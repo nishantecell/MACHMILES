@@ -1,18 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
-
-// ─── FIREBASE ─────────────────────────────────────────────────────────────────
-const firebaseApp = getApps().length === 0 ? initializeApp({
-  apiKey: "AIzaSyCaraC5ZLb87-xbwgieko3UWVzaegbAUDM",
-  authDomain: "machmiles-a2dbb.firebaseapp.com",
-  projectId: "machmiles-a2dbb",
-  storageBucket: "machmiles-a2dbb.firebasestorage.app",
-  messagingSenderId: "531969841384",
-  appId: "1:531969841384:web:db3707b5552903f7d7d15d",
-}) : getApps()[0];
-const firebaseAuth = getAuth(firebaseApp);
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "/api";
@@ -718,64 +705,31 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
-  const confirmationRef = useRef(null);
-
   useEffect(() => {
     if (otpTimer <= 0) return;
     const t = setTimeout(() => setOtpTimer(n => n - 1), 1000);
     return () => clearTimeout(t);
   }, [otpTimer]);
 
-  const getRecaptcha = () => {
-    const container = document.getElementById("recaptcha-container");
-    if (window._recaptchaVerifier) {
-      // If container was remounted (empty), clear old instance first
-      if (!container || container.childElementCount === 0) {
-        try { window._recaptchaVerifier.clear(); } catch (_) {}
-        window._recaptchaVerifier = null;
-      } else {
-        return window._recaptchaVerifier;
-      }
-    }
-    window._recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", { size: "invisible" });
-    return window._recaptchaVerifier;
-  };
-
-  const resetRecaptcha = () => {
-    if (window._recaptchaVerifier) {
-      try { window._recaptchaVerifier.clear(); } catch (_) {}
-      window._recaptchaVerifier = null;
-    }
-  };
-
   const handleSendOtp = async () => {
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length !== 10) { setError("Enter a valid 10-digit Indian mobile number"); return; }
     setSendingOtp(true); setError("");
-    try {
-      const recaptcha = getRecaptcha();
-      const confirmation = await signInWithPhoneNumber(firebaseAuth, "+91" + cleaned, recaptcha);
-      confirmationRef.current = confirmation;
-      setOtpSent(true); setOtpTimer(30);
-      setSuccess("OTP sent to +91 " + cleaned);
-    } catch (e) {
-      resetRecaptcha();
-      setError(e.message || "Failed to send OTP. Please try again.");
-    }
+    const res = await apiPost("/auth/register", { action: "send_otp", phone: cleaned });
     setSendingOtp(false);
+    if (!res.success) { setError(res.message || "Failed to send OTP"); return; }
+    setOtpSent(true); setOtpTimer(30);
+    setSuccess("OTP sent to +91 " + cleaned);
   };
 
   const handleVerifyOtp = async () => {
     if (otp.length !== 6) { setError("Enter the 6-digit OTP"); return; }
-    if (!confirmationRef.current) { setError("Please request OTP first"); return; }
+    const cleaned = phone.replace(/\D/g, "");
     setVerifyingOtp(true); setError("");
-    try {
-      await confirmationRef.current.confirm(otp);
-      setOtpVerified(true); setSuccess("Phone verified! ✓");
-    } catch (e) {
-      setError("Invalid OTP. Please try again.");
-    }
+    const res = await apiPost("/auth/register", { action: "verify_otp", phone: cleaned, otp });
     setVerifyingOtp(false);
+    if (!res.success) { setError(res.message || "Invalid OTP"); return; }
+    setOtpVerified(true); setSuccess("Phone verified! ✓");
   };
 
   const handleForgotPassword = async () => {
@@ -833,7 +787,6 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
           ← Back
         </button>
       )}
-      <div id="recaptcha-container" />
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: "2.5rem", width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
           <div style={{ width: 48, height: 48, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.2rem", margin: "0 auto 1rem", color: "#fff" }}>A</div>
