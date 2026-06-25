@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -33,10 +34,14 @@ export const authenticate = async (req, res) => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) { unauth(res, 'No token provided'); return null; }
   const token = header.split(' ')[1];
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) { unauth(res, 'Invalid or expired token'); return null; }
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-  return { ...user, ...(profile || {}) };
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', decoded.userId).single();
+    return { id: decoded.userId, email: decoded.email, ...(profile || {}) };
+  } catch (e) {
+    unauth(res, 'Invalid or expired token');
+    return null;
+  }
 };
 
 export const requireAdmin = (res, user) => {
