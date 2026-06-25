@@ -595,7 +595,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
                     📧 Email Us →
                   </a>
                   <a href="https://wa.me/918091355527?text=Hi,%20I'm%20interested%20in%20the%20MachMiles%20Enterprise%20plan.%20Please%20get%20in%20touch." target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: 12, background: "rgba(37,211,102,0.15)", border: "1px solid rgba(37,211,102,0.4)", color: "#25D366", borderRadius: 10, fontWeight: 700, cursor: "pointer", fontSize: "0.9rem", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
-                    💬 WhatsApp: +91 80913 55527
+                    💬 WhatsApp
                   </a>
                 </div>
               ) : (
