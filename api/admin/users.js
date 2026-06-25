@@ -76,14 +76,29 @@ export default async function handler(req, res) {
       })));
     }
 
-    // PUT /admin/users?id=X — update user plan/role
+    // PUT /admin/users?id=X — update user plan/role/status
     if (req.method === 'PUT' && id) {
-      const allowed = ['plan', 'role', 'full_name', 'phone'];
+      const allowed = ['plan', 'role', 'full_name', 'phone', 'status'];
       const updates = {};
       allowed.forEach(f => { if (req.body?.[f] !== undefined) updates[f] = req.body[f]; });
       const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select().single();
       if (error) throw error;
+
+      // Sync ban state to Supabase Auth
+      if (updates.status === 'blocked') {
+        await supabase.auth.admin.updateUserById(id, { ban_duration: '87600h' });
+      } else if (updates.status === 'active') {
+        await supabase.auth.admin.updateUserById(id, { ban_duration: 'none' });
+      }
+
       return ok(res, data, 'User updated');
+    }
+
+    // DELETE /admin/users?id=X — permanently delete user
+    if (req.method === 'DELETE' && id) {
+      await supabase.from('profiles').delete().eq('id', id);
+      await supabase.auth.admin.deleteUser(id);
+      return ok(res, null, 'User deleted');
     }
 
     return badReq(res, 'Invalid request');
