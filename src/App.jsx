@@ -4203,6 +4203,17 @@ function AdminPage({ onViewAs }) {
             <button onClick={() => onViewAs && onViewAs({ id: selectedUser.id, email: selectedUser.email, profile: selectedUser })} style={{ background: "linear-gradient(135deg,#F59E0B,#D97706)", border: "none", color: "#fff", borderRadius: 8, padding: "7px 18px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
               👁 View Their Dashboard
             </button>
+                        {selectedUser.status === 'blocked' ? (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'active')} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#10B981', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>✅ Unblock</button>
+            ) : (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'blocked')} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>🚫 Block</button>
+            )}
+            {selectedUser.status === 'suspended' ? (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'active')} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#10B981', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>▶ Unsuspend</button>
+            ) : (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'suspended')} style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#FCD34D', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>⏸ Suspend</button>
+            )}
+            <button onClick={() => deleteUser(selectedUser.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>🗑 Delete</button>
           </div>
 
           {/* User Profile Card */}
