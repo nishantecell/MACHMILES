@@ -1,5 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+
+const firebaseApp = getApps().length === 0 ? initializeApp({
+  apiKey: "AIzaSyCaraC5ZLb87-xbwgieko3UWVzaegbAUDM",
+  authDomain: "machmiles-a2dbb.firebaseapp.com",
+  projectId: "machmiles-a2dbb",
+  storageBucket: "machmiles-a2dbb.firebasestorage.app",
+  messagingSenderId: "531969841384",
+  appId: "1:531969841384:web:db3707b5552903f7d7d15d",
+}) : getApps()[0];
+const firebaseAuth = getAuth(firebaseApp);
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "/api";
@@ -711,25 +723,47 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     return () => clearTimeout(t);
   }, [otpTimer]);
 
+  const confirmationRef = useRef(null);
+
+  const getRecaptcha = () => {
+    if (window._recaptchaVerifier) return window._recaptchaVerifier;
+    window._recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", {
+      size: "invisible",
+      callback: () => {},
+    });
+    return window._recaptchaVerifier;
+  };
+
   const handleSendOtp = async () => {
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length !== 10) { setError("Enter a valid 10-digit Indian mobile number"); return; }
     setSendingOtp(true); setError("");
-    const res = await apiPost("/auth/register", { action: "send_otp", phone: cleaned });
-    setSendingOtp(false);
-    if (!res.success) { setError(res.message || "Failed to send OTP"); return; }
-    setOtpSent(true); setOtpTimer(30);
-    setSuccess("OTP sent to +91 " + cleaned);
+    try {
+      const verifier = getRecaptcha();
+      const result = await signInWithPhoneNumber(firebaseAuth, "+91" + cleaned, verifier);
+      confirmationRef.current = result;
+      setOtpSent(true); setOtpTimer(30);
+      setSuccess("OTP sent to +91 " + cleaned);
+    } catch (e) {
+      if (window._recaptchaVerifier) { window._recaptchaVerifier.clear(); window._recaptchaVerifier = null; }
+      setError(e.message || "Failed to send OTP");
+    } finally {
+      setSendingOtp(false);
+    }
   };
 
   const handleVerifyOtp = async () => {
     if (otp.length !== 6) { setError("Enter the 6-digit OTP"); return; }
-    const cleaned = phone.replace(/\D/g, "");
+    if (!confirmationRef.current) { setError("Please request OTP again"); return; }
     setVerifyingOtp(true); setError("");
-    const res = await apiPost("/auth/register", { action: "verify_otp", phone: cleaned, otp });
-    setVerifyingOtp(false);
-    if (!res.success) { setError(res.message || "Invalid OTP"); return; }
-    setOtpVerified(true); setSuccess("Phone verified! ✓");
+    try {
+      await confirmationRef.current.confirm(otp);
+      setOtpVerified(true); setSuccess("Phone verified! ✓");
+    } catch (e) {
+      setError("Invalid OTP. Please try again.");
+    } finally {
+      setVerifyingOtp(false);
+    }
   };
 
   const handleForgotPassword = async () => {
@@ -778,6 +812,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter,sans-serif", position: "relative" }}>
+      <div id="recaptcha-container" />
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
       {onBack && (
         <button onClick={onBack} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: "0.875rem", transition: "all 0.15s" }}
@@ -4082,6 +4117,25 @@ function AdminPage({ onViewAs }) {
     setUpdatingPlan(false);
   };
 
+  const updateUserStatus = async (userId, status) => {
+    const res = await apiPut(`/admin/users?id=${userId}`, { status });
+    if (res.success) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
+      if (selectedUser?.id === userId) setSelectedUser(prev => ({ ...prev, status }));
+    }
+  };
+
+  const deleteUser = async (userId) => {
+    if (!window.confirm("Permanently delete this user and all their data? This cannot be undone.")) return;
+    const res = await api(`/admin/users?id=${userId}`, { method: "DELETE" });
+    if (res.success) {
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      setSelectedUser(null);
+    } else {
+      alert(res.message || "Failed to delete user");
+    }
+  };
+
   const filteredUsers = users.filter(u =>
     !search || u.email?.toLowerCase().includes(search.toLowerCase()) || u.full_name?.toLowerCase().includes(search.toLowerCase())
   );
@@ -4184,6 +4238,8 @@ function AdminPage({ onViewAs }) {
                   </div>
                   {!isMobile && <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.8rem" }}>{u.created_at ? new Date(u.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>}
                   <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "3px 10px", borderRadius: 100, background: (PLAN_COLORS[u.plan || "free"] || PLAN_COLORS.free)[0], color: (PLAN_COLORS[u.plan || "free"] || PLAN_COLORS.free)[1], textTransform: "capitalize", display: "inline-block" }}>{u.plan || "free"}</span>
+                  {u.status === 'blocked' && <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "2px 8px", borderRadius: 100, background: "rgba(239,68,68,0.15)", color: "#F87171" }}>🚫 Blocked</span>}
+                  {u.status === 'suspended' && <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "2px 8px", borderRadius: 100, background: "rgba(245,158,11,0.15)", color: "#FCD34D" }}>⏸ Suspended</span>}
                   {!isMobile && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.82rem" }}>{u.application_count ?? "—"}</span>}
                   <button onClick={() => { setSelectedUser(u); loadUserApps(u.id); }} style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)", color: "#60A5FA", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 600 }}>View</button>
                 </div>
@@ -4203,7 +4259,33 @@ function AdminPage({ onViewAs }) {
             <button onClick={() => onViewAs && onViewAs({ id: selectedUser.id, email: selectedUser.email, profile: selectedUser })} style={{ background: "linear-gradient(135deg,#F59E0B,#D97706)", border: "none", color: "#fff", borderRadius: 8, padding: "7px 18px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
               👁 View Their Dashboard
             </button>
+            {selectedUser.status === 'blocked' ? (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'active')} style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.4)", color: "#10B981", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 600 }}>
+                ✅ Unblock
+              </button>
+            ) : (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'blocked')} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#F87171", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 600 }}>
+                🚫 Block
+              </button>
+            )}
+            {selectedUser.status === 'suspended' ? (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'active')} style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.4)", color: "#10B981", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 600 }}>
+                ▶ Unsuspend
+              </button>
+            ) : (
+              <button onClick={() => updateUserStatus(selectedUser.id, 'suspended')} style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#FCD34D", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 600 }}>
+                ⏸ Suspend
+              </button>
+            )}
+            <button onClick={() => deleteUser(selectedUser.id)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#F87171", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 600 }}>
+              🗑 Delete
+            </button>
           </div>
+          {selectedUser.status && selectedUser.status !== 'active' && (
+            <div style={{ background: selectedUser.status === 'blocked' ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)", border: `1px solid ${selectedUser.status === 'blocked' ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)"}`, borderRadius: 10, padding: "10px 16px", marginBottom: "1rem", color: selectedUser.status === 'blocked' ? "#F87171" : "#FCD34D", fontSize: "0.85rem", fontWeight: 600 }}>
+              {selectedUser.status === 'blocked' ? "🚫 This account is blocked" : "⏸ This account is suspended"}
+            </div>
+          )}
 
           {/* User Profile Card */}
           <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1.5rem", marginBottom: "1.25rem" }}>
