@@ -1,5 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+
+const firebaseApp = getApps().length === 0 ? initializeApp({
+  apiKey: "AIzaSyCaraC5ZLb87-xbwgieko3UWVzaegbAUDM",
+  authDomain: "machmiles-a2dbb.firebaseapp.com",
+  projectId: "machmiles-a2dbb",
+  storageBucket: "machmiles-a2dbb.firebasestorage.app",
+  messagingSenderId: "531969841384",
+  appId: "1:531969841384:web:db3707b5552903f7d7d15d",
+}) : getApps()[0];
+const firebaseAuth = getAuth(firebaseApp);
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "/api";
@@ -711,25 +723,47 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     return () => clearTimeout(t);
   }, [otpTimer]);
 
+  const confirmationRef = useRef(null);
+
+  const getRecaptcha = () => {
+    if (window._recaptchaVerifier) return window._recaptchaVerifier;
+    window._recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", {
+      size: "invisible",
+      callback: () => {},
+    });
+    return window._recaptchaVerifier;
+  };
+
   const handleSendOtp = async () => {
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length !== 10) { setError("Enter a valid 10-digit Indian mobile number"); return; }
     setSendingOtp(true); setError("");
-    const res = await apiPost("/auth/register", { action: "send_otp", phone: cleaned });
-    setSendingOtp(false);
-    if (!res.success) { setError(res.message || "Failed to send OTP"); return; }
-    setOtpSent(true); setOtpTimer(30);
-    setSuccess("OTP sent to +91 " + cleaned);
+    try {
+      const verifier = getRecaptcha();
+      const result = await signInWithPhoneNumber(firebaseAuth, "+91" + cleaned, verifier);
+      confirmationRef.current = result;
+      setOtpSent(true); setOtpTimer(30);
+      setSuccess("OTP sent to +91 " + cleaned);
+    } catch (e) {
+      if (window._recaptchaVerifier) { window._recaptchaVerifier.clear(); window._recaptchaVerifier = null; }
+      setError(e.message || "Failed to send OTP");
+    } finally {
+      setSendingOtp(false);
+    }
   };
 
   const handleVerifyOtp = async () => {
     if (otp.length !== 6) { setError("Enter the 6-digit OTP"); return; }
-    const cleaned = phone.replace(/\D/g, "");
+    if (!confirmationRef.current) { setError("Please request OTP again"); return; }
     setVerifyingOtp(true); setError("");
-    const res = await apiPost("/auth/register", { action: "verify_otp", phone: cleaned, otp });
-    setVerifyingOtp(false);
-    if (!res.success) { setError(res.message || "Invalid OTP"); return; }
-    setOtpVerified(true); setSuccess("Phone verified! ✓");
+    try {
+      await confirmationRef.current.confirm(otp);
+      setOtpVerified(true); setSuccess("Phone verified! ✓");
+    } catch (e) {
+      setError("Invalid OTP. Please try again.");
+    } finally {
+      setVerifyingOtp(false);
+    }
   };
 
   const handleForgotPassword = async () => {
@@ -778,6 +812,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter,sans-serif", position: "relative" }}>
+      <div id="recaptcha-container" />
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
       {onBack && (
         <button onClick={onBack} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: "0.875rem", transition: "all 0.15s" }}
