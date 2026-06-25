@@ -4082,7 +4082,7 @@ function AdminPage({ onViewAs }) {
     setUpdatingPlan(false);
   };
 
-  const filteredUsers = users.filter(u =>
+  const updateUserStatus = async (userId, status) => {     const res = await apiPut(`/admin/users?id=${userId}`, { status });     if (res.success) {       setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));       if (selectedUser?.id === userId) setSelectedUser(prev => ({ ...prev, status }));     }   };    const deleteUser = async (userId) => {     if (!window.confirm("Permanently delete this user and all their data? This cannot be undone.")) return;     const res = await api(`/admin/users?id=${userId}`, { method: "DELETE" });     if (res.success) {       setUsers(prev => prev.filter(u => u.id !== userId));       setSelectedUser(null);     } else {       alert(res.message || "Failed to delete user");     }   };    const filteredUsers = users.filter(u =>
     !search || u.email?.toLowerCase().includes(search.toLowerCase()) || u.full_name?.toLowerCase().includes(search.toLowerCase())
   );
 
