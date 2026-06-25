@@ -17,6 +17,7 @@ const firebaseAuth = getAuth(firebaseApp);
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "/api";
 const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || "";
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY || "";
 const RXRESUME_KEY = import.meta.env.VITE_RXRESUME_KEY || "yKLSvhJOucYqkUTWyiNqeXzLHUeXtgsrYziunbrJVFuQTClLswRKOjgjDMvYkbOe";
 const RXRESUME_API = "https://api.rxresu.me";
 const RAZORPAY_KEY = "rzp_live_SqZrMTUnxQH5E4";
@@ -38,6 +39,9 @@ const clearTokens = () => {
   localStorage.removeItem("aa_refresh_token");
 };
 
+// Set by AppShell when admin is viewing another user's dashboard
+let __viewAsUserId = null;
+
 async function api(path, options = {}) {
   const token = getToken();
   const headers = {
@@ -46,7 +50,12 @@ async function api(path, options = {}) {
     ...options.headers,
   };
   try {
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    let url = `${API_BASE}${path}`;
+    // Inject view_as for non-admin routes only
+    if (__viewAsUserId && (!options.method || options.method === 'GET') && !path.startsWith('/admin')) {
+      url += (url.includes('?') ? '&' : '?') + `view_as=${__viewAsUserId}`;
+    }
+    const res = await fetch(url, { ...options, headers });
     return res.json();
   } catch (e) {
     return { success: false, message: "Network error" };
@@ -58,15 +67,20 @@ const apiPost   = (path, body) => api(path, { method: "POST",   body: JSON.strin
 const apiPut    = (path, body) => api(path, { method: "PUT",    body: JSON.stringify(body) });
 const apiDelete = (path)       => api(path, { method: "DELETE" });
 
+// Admin gets full premium access everywhere
+const effectivePlan = (profile) => profile?.role === "admin" ? "premium" : (profile?.plan || "free");
+
 // ─── PLANS ────────────────────────────────────────────────────────────────────
 const PLANS = [
-  { name: "Free", price: "₹0", period: "", amount: 0, features: ["20 AI applications/month", "1 Resume", "Basic AI matching", "Job tracking"], cta: "Get Started", razorpay: null },
-  { name: "Pro", price: "₹599", period: "/mo", amount: 59900, features: ["Unlimited applications", "Unlimited resumes", "AI Resume Optimization", "AI Cover Letters", "Auto Apply engine", "Interview Preparation", "Priority support"], cta: "Start Pro", razorpay: { description: "AutoApply AI Pro Plan" }, highlight: true },
-  { name: "Premium", price: "₹999", period: "/mo", amount: 99900, features: ["Everything in Pro", "LinkedIn Optimization", "AI Career Coach", "Advanced Analytics", "Multi-country search", "Early access features"], cta: "Go Premium", razorpay: { description: "AutoApply AI Premium Plan" } },
+  { name: "Free", price: "₹0", period: "", amount: 0, features: ["5 AI applications/month", "1 Resume", "Basic AI matching", "Job tracking (last 5 only)"], cta: "Get Started", razorpay: null },
+  { name: "Pro", price: "₹599", period: "/mo", amount: 59900, features: ["150 AI applications/month", "Unlimited resumes", "AI Resume Optimization", "AI Cover Letters", "Auto Apply engine", "Interview Preparation", "Priority support"], cta: "Start Pro", razorpay: { description: "AutoApply AI Pro Plan" }, highlight: true },
+  { name: "Premium", price: "₹999", period: "/mo", amount: 99900, features: ["Unlimited AI applications/month", "LinkedIn Optimization", "AI Career Coach", "Advanced Analytics", "Multi-country search", "Early access features"], cta: "Go Premium", razorpay: { description: "AutoApply AI Premium Plan" } },
+  { name: "Enterprise", price: "₹3,999", period: "/mo", amount: 399900, features: ["Everything in Premium", "Up to 50 team members", "Bulk resume screening & ranking", "Dedicated AI hiring assistant", "ATS integration (Naukri, LinkedIn, Workday)", "Custom job pipeline & workflows", "Campus hiring & bulk outreach", "White-label branding", "Priority SLA & dedicated account manager", "Advanced team analytics dashboard", "API access for custom integrations", "Quarterly strategy review call"], cta: "Contact Sales", razorpay: null, enterprise: true },
 ];
 
-const NAV_ITEMS = ["Dashboard", "Jobs", "Applications", "Resume", "Interview Prep", "AI Assistant", "Settings", "Admin"];
+const NAV_ITEMS = ["Dashboard", "Jobs", "Applications", "Resume", "Interview Prep", "AI Assistant", "Settings"];
 const STATUS_COLORS = { Applied: "#3B82F6", Viewed: "#8B5CF6", Assessment: "#F59E0B", Interview: "#10B981", Offer: "#059669", Rejected: "#EF4444", Archived: "#6B7280" };
+const PLAN_COLORS = { free: ["rgba(255,255,255,0.06)", "rgba(255,255,255,0.4)"], pro: ["rgba(59,130,246,0.15)", "#60A5FA"], premium: ["rgba(139,92,246,0.15)", "#A78BFA"], enterprise: ["rgba(251,191,36,0.15)", "#FCD34D"] };
 
 const SAMPLE_JOBS = [
   { id: 1, title: "Senior React Developer", company: "Stripe", location: "Remote", salary: "₹28-35L", match: 96, type: "Full-time", posted: "2h ago", logo: "S", color: "#635BFF" },
@@ -85,6 +99,35 @@ const SAMPLE_APPS = [
   { id: 6, company: "Airbnb", position: "Frontend Eng", date: "Jun 10", status: "Offer", match: 96, logo: "AB", color: "#FF5A5F" },
 ];
 
+// ─── GEMINI HELPERS ───────────────────────────────────────────────────────────
+async function callGemini(prompt, maxTokens = 600) {
+  if (!GEMINI_KEY) throw new Error("GEMINI_KEY_MISSING");
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Gemini error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+async function generateCoverLetter(jobTitle, company, skills) {
+  const prompt = `Write a professional, concise cover letter for a ${jobTitle} position at ${company}. The candidate has these skills: ${skills}. Keep it under 200 words, warm but professional tone.`;
+  // Try Gemini Flash first, fall back to OpenAI
+  if (GEMINI_KEY) return callGemini(prompt, 500);
+  return callOpenAI([{ role: "user", content: prompt }], 400);
+}
+
 // ─── OPENAI HELPERS ───────────────────────────────────────────────────────────
 async function callOpenAI(messages, maxTokens = 500) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -92,12 +135,12 @@ async function callOpenAI(messages, maxTokens = 500) {
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
     body: JSON.stringify({ model: "gpt-4o-mini", messages, max_tokens: maxTokens }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `OpenAI error ${res.status}`);
+  }
   const data = await res.json();
   return data.choices?.[0]?.message?.content || "";
-}
-
-async function generateCoverLetter(jobTitle, company, skills) {
-  return callOpenAI([{ role: "user", content: `Write a professional, concise cover letter for a ${jobTitle} position at ${company}. The candidate has these skills: ${skills}. Keep it under 200 words, warm but professional tone.` }], 400);
 }
 
 async function analyzeResume(resumeText) {
@@ -107,6 +150,135 @@ async function analyzeResume(resumeText) {
 async function chatWithAI(messages) {
   const systemMsg = { role: "system", content: "You are an expert AI career coach specializing in tech job searches in India. Help with resume advice, interview prep, salary negotiation, and career guidance. Be concise and actionable." };
   return callOpenAI([systemMsg, ...messages], 400);
+}
+
+// ── Parse resume PDF/text → structured data via PDF.js + OpenAI ──────────────
+async function extractTextFromPDF(file) {
+  // Try loading pdf.js from unpkg (more reliable than cdnjs)
+  if (!window.pdfjsLib) {
+    const urls = [
+      "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+    ];
+    for (const url of urls) {
+      try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script"); s.src = url;
+          s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+        });
+        if (window.pdfjsLib) break;
+      } catch { /* try next */ }
+    }
+    if (!window.pdfjsLib) throw new Error("Could not load PDF reader. Try uploading a .txt file instead.");
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(" ") + "\n";
+  }
+  return text.trim();
+}
+
+// Fallback: regex-based resume parser (no API needed)
+function parseResumeWithRegex(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+  const phoneMatch = text.match(/(\+?\d[\d\s\-().]{8,14}\d)/);
+  const linkedinMatch = text.match(/linkedin\.com\/in\/[\w-]+/i);
+  const websiteMatch = text.match(/(?:https?:\/\/)?(?:www\.)?[\w-]+\.(?:com|io|dev|me|co\.in)[/\w-]*/i);
+
+  // Name: usually first non-empty line that's not an email/phone/url
+  const nameLine = lines.find(l => l.length > 2 && l.length < 60 && !/[@|http|www|\d{4}]/.test(l) && !/resume|curriculum|cv/i.test(l)) || "";
+
+  // Title: second candidate line
+  const titleLine = lines.find((l, i) => i > 0 && i < 6 && l !== nameLine && l.length < 80 && !/[@\d]/.test(l)) || "";
+
+  // Locate section boundaries
+  const sectionHeaders = /^(experience|work experience|employment|education|skills|projects|certifications?|languages?|summary|objective|profile|achievements?)/i;
+  const sections = {};
+  let current = "intro";
+  for (const line of lines) {
+    if (sectionHeaders.test(line)) { current = line.toLowerCase().split(/\s/)[0]; sections[current] = []; }
+    else { if (!sections[current]) sections[current] = []; sections[current].push(line); }
+  }
+
+  const getSection = (...keys) => { for (const k of keys) { const match = Object.keys(sections).find(s => s.startsWith(k)); if (match) return sections[match] || []; } return []; };
+
+  // Skills
+  const skillLines = getSection("skill");
+  const skills = skillLines.length ? [{ category: "Skills", items: skillLines.slice(0, 10).join(", ") }] : [];
+
+  // Experience: look for job entries
+  const expLines = getSection("experience", "employment", "work");
+  const experience = [];
+  let currentExp = null;
+  for (const line of expLines) {
+    const dateMatch = line.match(/(\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|january|february|march|april|june|july|august|september|october|november|december)?\s*\d{4}\b)/gi);
+    if (dateMatch && line.length < 120) {
+      if (currentExp) experience.push(currentExp);
+      currentExp = { position: line.replace(/[-|·•,\s]+\d{4}.*/g, "").trim(), company: "", location: "", startDate: dateMatch[0] || "", endDate: dateMatch[1] || "", current: /present|current/i.test(line), description: "" };
+    } else if (currentExp) { currentExp.description = (currentExp.description + " " + line).trim().slice(0, 400); }
+    else { experience.push({ position: line.slice(0, 60), company: "", location: "", startDate: "", endDate: "", current: false, description: "" }); }
+  }
+  if (currentExp) experience.push(currentExp);
+
+  // Education
+  const eduLines = getSection("education");
+  const education = [];
+  let currentEdu = null;
+  for (const line of eduLines) {
+    if (/university|college|institute|school|iit|nit|bits|b\.tech|m\.tech|bachelor|master|b\.e|m\.e|bsc|msc/i.test(line)) {
+      if (currentEdu) education.push(currentEdu);
+      const dateMatch = line.match(/\d{4}/g);
+      currentEdu = { degree: line.slice(0, 80), field: "", school: line.slice(0, 60), startDate: dateMatch?.[0] || "", endDate: dateMatch?.[1] || "", gpa: "" };
+    } else if (currentEdu) { currentEdu.field = (currentEdu.field + " " + line).trim().slice(0, 60); }
+  }
+  if (currentEdu) education.push(currentEdu);
+
+  const summaryLines = getSection("summary", "objective", "profile");
+
+  return {
+    personal: { name: nameLine, title: titleLine, email: emailMatch?.[0] || "", phone: phoneMatch?.[0] || "", location: "", linkedin: linkedinMatch?.[0] || "", website: websiteMatch?.[0] || "" },
+    summary: summaryLines.slice(0, 3).join(" "),
+    experience: experience.slice(0, 6),
+    education: education.slice(0, 3),
+    skills,
+    projects: [],
+    certifications: [],
+    languages: [],
+  };
+}
+
+async function parseResumeWithAI(text) {
+  if (!OPENAI_KEY) return parseResumeWithRegex(text);
+  const prompt = `Extract structured resume data from the following resume text and return ONLY a valid JSON object with this exact structure (use empty string or empty array for missing fields):
+{
+  "personal": { "name": "", "title": "", "email": "", "phone": "", "location": "", "linkedin": "", "website": "" },
+  "summary": "",
+  "experience": [{ "position": "", "company": "", "location": "", "startDate": "", "endDate": "", "current": false, "description": "" }],
+  "education": [{ "degree": "", "field": "", "school": "", "startDate": "", "endDate": "", "gpa": "" }],
+  "skills": [{ "category": "", "items": "" }],
+  "projects": [{ "name": "", "technologies": "", "url": "", "description": "" }],
+  "certifications": [{ "name": "", "issuer": "", "date": "" }],
+  "languages": [{ "language": "", "proficiency": "" }]
+}
+
+Resume text:
+${text.slice(0, 6000)}`;
+
+  try {
+    const result = await callOpenAI([{ role: "user", content: prompt }], 2000);
+    if (!result) return parseResumeWithRegex(text);
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : parseResumeWithRegex(text);
+  } catch {
+    return parseResumeWithRegex(text);
+  }
 }
 
 async function uploadResume(file) {
@@ -189,18 +361,12 @@ function Spinner() {
 }
 
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
-function LandingPage({ onSignup, onLogin }) {
+function LandingPage({ onSignup, onLogin, onPolicy }) {
   const [activeFaq, setActiveFaq] = useState(null);
-  const [payingPlan, setPayingPlan] = useState(null);
-  const [paySuccess, setPaySuccess] = useState(null);
 
-  const handlePay = async (plan) => {
-    if (!plan.razorpay) { onSignup(); return; }
-    setPayingPlan(plan.name);
-    await startPayment(plan,
-      (result) => { setPaySuccess(result); setPayingPlan(null); },
-      (msg) => { alert(msg); setPayingPlan(null); }
-    );
+  const handlePlanClick = (plan) => {
+    if (plan.razorpay) localStorage.setItem("pending_plan", plan.name);
+    onSignup();
   };
 
   const FAQS = [
@@ -216,7 +382,10 @@ function LandingPage({ onSignup, onLogin }) {
       <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>A</div>
-          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.1rem" }}>AutoApply<span style={{ color: "#3B82F6" }}> AI</span></span>
+          <div>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.1rem", lineHeight: 1.2 }}>AutoApply<span style={{ color: "#3B82F6" }}> AI</span></div>
+            <div style={{ fontSize: "0.58rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.08em", fontWeight: 500, lineHeight: 1, marginTop: 3 }}>powered by MACHMILES</div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <button onClick={onLogin} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "8px 20px", cursor: "pointer" }}>Log in</button>
@@ -229,6 +398,12 @@ function LandingPage({ onSignup, onLogin }) {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 100, padding: "6px 16px", marginBottom: "2rem", fontSize: "0.8rem", color: "#93C5FD" }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#3B82F6", display: "inline-block" }} />
           AI actively applying for 2,847 users right now
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg,rgba(59,130,246,0.12),rgba(139,92,246,0.12))", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 100, padding: "8px 20px" }}>
+            <img src="https://flagcdn.com/w20/in.png" alt="" width={20} height={14} style={{ objectFit: "cover", borderRadius: 2, flexShrink: 0 }} />
+            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "0.85rem", background: "linear-gradient(135deg,#60A5FA,#A78BFA)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "0.02em" }}>India's Best Platform for Auto-Apply Jobs</span>
+          </div>
         </div>
         <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(2.5rem,6vw,4.5rem)", lineHeight: 1.05, letterSpacing: "-0.04em", marginBottom: "1.5rem" }}>
           Land Your Dream Job<br />
@@ -252,6 +427,65 @@ function LandingPage({ onSignup, onLogin }) {
         </div>
       </section>
 
+      {/* Company Logos Ticker */}
+      <div style={{ background: "rgba(255,255,255,0.02)", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "1.5rem 0", overflow: "hidden" }}>
+        <p style={{ textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: "0.75rem", letterSpacing: "0.12em", fontWeight: 600, textTransform: "uppercase", marginBottom: "1.25rem" }}>Trusted by job seekers placing at top companies</p>
+        <div style={{ display: "flex", overflow: "hidden", maskImage: "linear-gradient(to right, transparent, black 10%, black 90%, transparent)" }}>
+          <div style={{ display: "flex", gap: "2.5rem", animation: "ticker 28s linear infinite", whiteSpace: "nowrap", alignItems: "center" }}>
+            {[
+              { name: "Google", domain: "google.com", color: "#4285F4" },
+              { name: "Microsoft", domain: "microsoft.com", color: "#00A4EF" },
+              { name: "Amazon", domain: "amazon.com", color: "#FF9900" },
+              { name: "Flipkart", domain: "flipkart.com", color: "#2874F0" },
+              { name: "Infosys", domain: "infosys.com", color: "#007CC3" },
+              { name: "TCS", domain: "tcs.com", color: "#0047AB" },
+              { name: "Wipro", domain: "wipro.com", color: "#341C57" },
+              { name: "Swiggy", domain: "swiggy.com", color: "#FC8019" },
+              { name: "Zomato", domain: "zomato.com", color: "#E23744" },
+              { name: "Razorpay", domain: "razorpay.com", color: "#3395FF" },
+              { name: "CRED", domain: "cred.club", color: "#1C1C1C" },
+              { name: "Meesho", domain: "meesho.com", color: "#9B2FBE" },
+              { name: "PhonePe", domain: "phonepe.com", color: "#5F259F" },
+              { name: "Groww", domain: "groww.in", color: "#00D09C" },
+              { name: "Nykaa", domain: "nykaa.com", color: "#FC2779" },
+              { name: "Paytm", domain: "paytm.com", color: "#002970" },
+              // duplicate for seamless loop
+              { name: "Google", domain: "google.com", color: "#4285F4" },
+              { name: "Microsoft", domain: "microsoft.com", color: "#00A4EF" },
+              { name: "Amazon", domain: "amazon.com", color: "#FF9900" },
+              { name: "Flipkart", domain: "flipkart.com", color: "#2874F0" },
+              { name: "Infosys", domain: "infosys.com", color: "#007CC3" },
+              { name: "TCS", domain: "tcs.com", color: "#0047AB" },
+              { name: "Wipro", domain: "wipro.com", color: "#341C57" },
+              { name: "Swiggy", domain: "swiggy.com", color: "#FC8019" },
+              { name: "Zomato", domain: "zomato.com", color: "#E23744" },
+              { name: "Razorpay", domain: "razorpay.com", color: "#3395FF" },
+              { name: "CRED", domain: "cred.club", color: "#1C1C1C" },
+              { name: "Meesho", domain: "meesho.com", color: "#9B2FBE" },
+              { name: "PhonePe", domain: "phonepe.com", color: "#5F259F" },
+              { name: "Groww", domain: "groww.in", color: "#00D09C" },
+              { name: "Nykaa", domain: "nykaa.com", color: "#FC2779" },
+              { name: "Paytm", domain: "paytm.com", color: "#002970" },
+            ].map((co, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 40, padding: "6px 16px 6px 8px" }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${co.domain}&sz=64`}
+                    alt={co.name}
+                    width={24}
+                    height={24}
+                    style={{ objectFit: "contain" }}
+                    onError={e => { e.target.parentNode.style.background = co.color; e.target.style.display = "none"; e.target.parentNode.innerHTML = `<span style="color:#fff;font-weight:800;font-size:0.85rem">${co.name[0]}</span>`; }}
+                  />
+                </div>
+                <span style={{ color: "rgba(255,255,255,0.85)", fontWeight: 600, fontSize: "0.88rem", fontFamily: "'Space Grotesk',sans-serif", whiteSpace: "nowrap" }}>{co.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <style>{`@keyframes ticker { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }`}</style>
+      </div>
+
       {/* Resume Builder Hero Section */}
       <section style={{ padding: "5rem 5%", background: "linear-gradient(135deg, rgba(59,130,246,0.06) 0%, rgba(139,92,246,0.06) 100%)", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
@@ -263,13 +497,13 @@ function LandingPage({ onSignup, onLogin }) {
             <button onClick={() => document.getElementById("resume-templates-preview")?.scrollIntoView({ behavior: "smooth" })} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 12, padding: "14px 32px", fontSize: "1rem", fontWeight: 600, cursor: "pointer" }}>View Templates</button>
           </div>
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", justifyContent: "center", marginBottom: "3rem" }}>
-            {[["📄", "6 Free Templates"], ["👑", "Premium Templates Available"], ["🤖", "AI Resume Builder"], ["⬇", "Download PDF Instantly"]].map(([icon, text]) => (
+            {[["📄", "5 Free Templates"], ["👑", "10 Premium Templates"], ["🤖", "AI Resume Builder"], ["⬇", "Download PDF Instantly"]].map(([icon, text]) => (
               <div key={text} style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.6)", fontSize: "0.875rem" }}><span>{icon}</span>{text}</div>
             ))}
           </div>
           {/* Template preview strip */}
           <div id="resume-templates-preview" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "1rem", width: "100%", maxWidth: 900 }}>
-            {RESUME_TEMPLATES.slice(0, 6).map(t => (
+            {RESUME_TEMPLATES.slice(0, 5).map(t => (
               <div key={t.id} onClick={onSignup} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", cursor: "pointer", transition: "border-color 0.2s" }}>
                 <div style={{ height: 110, background: `linear-gradient(135deg, ${t.accent}22, ${t.accent}55)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ width: 52, height: 68, background: "#fff", borderRadius: 3, boxShadow: "0 2px 12px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", padding: 5, gap: 3 }}>
@@ -342,22 +576,33 @@ function LandingPage({ onSignup, onLogin }) {
           <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem", letterSpacing: "-0.03em" }}>Simple, transparent pricing</h2>
           <p style={{ color: "rgba(255,255,255,0.4)", marginTop: "0.75rem" }}>Secure payments via Razorpay · UPI, Cards, NetBanking</p>
         </div>
-        {paySuccess && <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 14, padding: "1rem", maxWidth: 500, margin: "0 auto 2rem", textAlign: "center" }}>🎉 Payment successful — Welcome to {paySuccess.plan}! ID: {paySuccess.id}</div>}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "1.25rem", maxWidth: 1000, margin: "0 auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: "1.25rem", maxWidth: 1200, margin: "0 auto" }}>
           {PLANS.map(plan => (
-            <div key={plan.name} style={{ background: plan.highlight ? "linear-gradient(145deg,rgba(59,130,246,0.15),rgba(139,92,246,0.08))" : "rgba(255,255,255,0.02)", border: `1.5px solid ${plan.highlight ? "rgba(59,130,246,0.5)" : "rgba(255,255,255,0.07)"}`, borderRadius: 20, padding: "2rem", position: "relative" }}>
+            <div key={plan.name} style={{ background: plan.enterprise ? "linear-gradient(145deg,rgba(251,191,36,0.08),rgba(245,158,11,0.04))" : plan.highlight ? "linear-gradient(145deg,rgba(59,130,246,0.15),rgba(139,92,246,0.08))" : "rgba(255,255,255,0.02)", border: `1.5px solid ${plan.enterprise ? "rgba(251,191,36,0.4)" : plan.highlight ? "rgba(59,130,246,0.5)" : "rgba(255,255,255,0.07)"}`, borderRadius: 20, padding: "2rem", position: "relative" }}>
               {plan.highlight && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", fontSize: "0.7rem", fontWeight: 700, padding: "4px 14px", borderRadius: 100 }}>MOST POPULAR</div>}
-              <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, marginBottom: 4 }}>{plan.name}</h3>
+              {plan.enterprise && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg,#F59E0B,#D97706)", color: "#fff", fontSize: "0.7rem", fontWeight: 700, padding: "4px 14px", borderRadius: 100 }}>🏢 FOR BUSINESS</div>}
+              <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, marginBottom: 4, color: plan.enterprise ? "#FCD34D" : "#fff" }}>{plan.name}</h3>
               <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: "1.5rem" }}>
-                <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem" }}>{plan.price}</span>
+                <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem", color: plan.enterprise ? "#FCD34D" : "#fff" }}>{plan.price}</span>
                 <span style={{ color: "rgba(255,255,255,0.4)" }}>{plan.period}</span>
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: "0 0 2rem" }}>
-                {plan.features.map(f => <li key={f} style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.9rem", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", gap: 10 }}><span style={{ color: "#3B82F6" }}>✓</span>{f}</li>)}
+                {plan.features.map(f => <li key={f} style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.85rem", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", gap: 10 }}><span style={{ color: plan.enterprise ? "#F59E0B" : "#3B82F6" }}>✓</span>{f}</li>)}
               </ul>
-              <button onClick={() => handlePay(plan)} disabled={payingPlan === plan.name} style={{ width: "100%", padding: 12, background: plan.highlight ? "linear-gradient(135deg,#3B82F6,#8B5CF6)" : "rgba(255,255,255,0.06)", border: plan.highlight ? "none" : "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: 10, fontWeight: 600, cursor: "pointer", fontSize: "0.95rem" }}>
-                {payingPlan === plan.name ? "Opening..." : plan.cta}
-              </button>
+              {plan.enterprise ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <a href="https://mail.google.com/mail/?view=cm&to=info@machmiles.com&su=Enterprise Plan Enquiry&body=Hi, I'm interested in the MachMiles Enterprise plan. Please get in touch." target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: 12, background: "linear-gradient(135deg,#F59E0B,#D97706)", border: "none", color: "#fff", borderRadius: 10, fontWeight: 700, cursor: "pointer", fontSize: "0.95rem", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
+                    📧 Email Us →
+                  </a>
+                  <a href="https://wa.me/918091355527?text=Hi,%20I'm%20interested%20in%20the%20MachMiles%20Enterprise%20plan.%20Please%20get%20in%20touch." target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: 12, background: "rgba(37,211,102,0.15)", border: "1px solid rgba(37,211,102,0.4)", color: "#25D366", borderRadius: 10, fontWeight: 700, cursor: "pointer", fontSize: "0.9rem", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
+                    💬 WhatsApp: +91 80913 55527
+                  </a>
+                </div>
+              ) : (
+                <button onClick={() => handlePlanClick(plan)} style={{ width: "100%", padding: 12, background: plan.highlight ? "linear-gradient(135deg,#3B82F6,#8B5CF6)" : "rgba(255,255,255,0.06)", border: plan.highlight ? "none" : "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: 10, fontWeight: 600, cursor: "pointer", fontSize: "0.95rem" }}>
+                  {plan.cta}
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -388,9 +633,9 @@ function LandingPage({ onSignup, onLogin }) {
               <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.875rem", lineHeight: 1.7, margin: "0 0 1.5rem" }}>AutoApply AI is India's leading Job Application Automation platform. Gone are the days of filling job forms manually — let AI apply to jobs and multiply your interview requests.</p>
               <div style={{ display: "flex", gap: 12 }}>
                 {[
-                  ["in", "https://linkedin.com", "#0A66C2"],
+                  ["in", "https://www.linkedin.com/company/machmiles/", "#0A66C2"],
                   ["f", "https://facebook.com", "#1877F2"],
-                  ["ig", "https://instagram.com", "#E1306C"],
+                  ["ig", "https://www.instagram.com/mach.miles?igsh=dWN0dzBlZGZjZWNn", "#E1306C"],
                   ["tk", "https://tiktok.com", "#fff"],
                 ].map(([icon, href, color]) => (
                   <a key={icon} href={href} target="_blank" rel="noopener noreferrer" style={{ width: 34, height: 34, background: "rgba(255,255,255,0.1)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none" }}>{icon}</a>
@@ -421,7 +666,7 @@ function LandingPage({ onSignup, onLogin }) {
             {/* Company */}
             <div>
               <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "2px solid rgba(129,140,248,0.4)" }}>Company</div>
-              {[["Pricing", () => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })], ["About Us", onSignup], ["Reviews", onSignup], ["Privacy Policy", onSignup], ["Terms of Service", onSignup], ["Contact Us", onSignup], ["Refund Policy", onSignup]].map(([label, action]) => (
+              {[["Pricing", () => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })], ["About Us", onSignup], ["Reviews", onSignup], ["Privacy Policy", () => onPolicy("privacy")], ["Terms & Conditions", () => onPolicy("terms")], ["Refund Policy", () => onPolicy("refund")], ["Cancellation Policy", () => onPolicy("cancellation")]].map(([label, action]) => (
                 <div key={label} style={{ marginBottom: 8 }}>
                   <button onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif" }}>{label}</button>
                 </div>
@@ -443,8 +688,8 @@ function LandingPage({ onSignup, onLogin }) {
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
             <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.82rem", margin: 0 }}>© 2026 AutoApply AI · All rights reserved · Powered by Supabase + OpenAI</p>
             <div style={{ display: "flex", gap: 20 }}>
-              {["Privacy Policy", "Terms of Service", "Refund Policy"].map(label => (
-                <button key={label} onClick={onSignup} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: "0.78rem", cursor: "pointer", padding: 0, fontFamily: "Inter,sans-serif" }}>{label}</button>
+              {[["Privacy Policy","privacy"],["Terms & Conditions","terms"],["Refund Policy","refund"],["Cancellation Policy","cancellation"]].map(([label, key]) => (
+                <button key={key} onClick={() => onPolicy(key)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: "0.78rem", cursor: "pointer", padding: 0, fontFamily: "Inter,sans-serif" }}>{label}</button>
               ))}
             </div>
           </div>
@@ -482,39 +727,24 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     return () => clearTimeout(t);
   }, [otpTimer]);
 
-  // Clean up reCAPTCHA on unmount
   useEffect(() => {
-    return () => {
-      if (recaptchaRef.current) { try { recaptchaRef.current.clear(); } catch (_) {} recaptchaRef.current = null; }
-    };
+    return () => { if (recaptchaRef.current) { try { recaptchaRef.current.clear(); } catch (_) {} recaptchaRef.current = null; } };
   }, []);
-
-  const handleForgotPassword = async () => {
-    if (!forgotEmail.trim()) { setError("Enter your email address"); return; }
-    setForgotLoading(true); setError("");
-    const { error: e } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), { redirectTo: window.location.origin });
-    setForgotLoading(false);
-    if (e) setError(e.message);
-    else { setSuccess("Password reset email sent! Check your inbox."); setForgotMode(false); }
-  };
 
   const handleSendOtp = async () => {
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length !== 10) { setError("Enter a valid 10-digit Indian mobile number"); return; }
     setSendingOtp(true); setError("");
     try {
-      // Create or reuse invisible reCAPTCHA
       if (!recaptchaRef.current) {
         recaptchaRef.current = new RecaptchaVerifier(firebaseAuth, "recaptcha-container", { size: "invisible" });
       }
       const confirmation = await signInWithPhoneNumber(firebaseAuth, "+91" + cleaned, recaptchaRef.current);
       confirmationRef.current = confirmation;
-      setOtpSent(true);
-      setOtpTimer(30);
+      setOtpSent(true); setOtpTimer(30);
       setSuccess("OTP sent to +91 " + cleaned);
     } catch (e) {
       setError(e.message || "Failed to send OTP. Please try again.");
-      // Reset reCAPTCHA on error so it can be retried
       if (recaptchaRef.current) { try { recaptchaRef.current.clear(); } catch (_) {} recaptchaRef.current = null; }
     }
     setSendingOtp(false);
@@ -526,12 +756,22 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     setVerifyingOtp(true); setError("");
     try {
       await confirmationRef.current.confirm(otp);
-      setOtpVerified(true);
-      setSuccess("Phone verified! ✓");
+      setOtpVerified(true); setSuccess("Phone verified! ✓");
     } catch (e) {
       setError("Invalid OTP. Please try again.");
     }
     setVerifyingOtp(false);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) { setError("Enter your email address"); return; }
+    setForgotLoading(true); setError("");
+    const { error: e } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: window.location.origin,
+    });
+    setForgotLoading(false);
+    if (e) setError(e.message);
+    else { setSuccess("Password reset email sent! Check your inbox."); setForgotMode(false); }
   };
 
   const handleSubmit = async () => {
@@ -544,6 +784,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
       if (mode === "signup") {
         const res = await apiPost("/auth/register", { name: name.trim(), email: email.trim(), password: pass, phone: phone.replace(/\D/g, "") });
         if (!res.success) throw new Error(res.message || "Registration failed");
+        // Auto-login after signup
         const loginRes = await apiPost("/auth/login", { email: email.trim(), password: pass });
         if (!loginRes.success) { setSuccess("Account created! Please sign in."); setLoading(false); return; }
         setTokens(loginRes.data.accessToken, loginRes.data.refreshToken);
@@ -566,17 +807,17 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
     if (error) setError(error.message);
   };
 
-  const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" };
-
   return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter,sans-serif", position: "relative" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
       {onBack && (
-        <button onClick={onBack} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: "0.875rem" }}>
+        <button onClick={onBack} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: "0.875rem", transition: "all 0.15s" }}
+          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+          onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+        >
           ← Back
         </button>
       )}
-      {/* Invisible reCAPTCHA mount point for Firebase Phone Auth */}
       <div id="recaptcha-container" />
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: "2.5rem", width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
@@ -601,7 +842,12 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
         {forgotMode ? (
           <>
             <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.85rem", marginBottom: "1rem" }}>Enter your email and we'll send a reset link.</p>
-            <input value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="Email address" type="email" onKeyDown={e => e.key === "Enter" && handleForgotPassword()} style={{ ...inputStyle, marginBottom: 12 }} />
+            <input
+              value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+              placeholder="Email address" type="email"
+              onKeyDown={e => e.key === "Enter" && handleForgotPassword()}
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box", marginBottom: 12 }}
+            />
             <button onClick={handleForgotPassword} disabled={forgotLoading} style={{ width: "100%", padding: 13, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: "1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: forgotLoading ? 0.7 : 1 }}>
               {forgotLoading && <Spinner />}Send Reset Link
             </button>
@@ -613,10 +859,14 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {mode === "signup" && (
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" style={inputStyle} />
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }} />
               )}
-              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" type="email" style={inputStyle} />
-              <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Password (min 6 characters)" type="password" onKeyDown={e => e.key === "Enter" && !otpSent && handleSubmit()} style={inputStyle} />
+              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" type="email"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Password (min 6 characters)" type="password"
+                onKeyDown={e => e.key === "Enter" && !otpSent && handleSubmit()}
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", width: "100%", boxSizing: "border-box" }} />
 
               {/* Phone + OTP — signup only */}
               {mode === "signup" && (
@@ -625,7 +875,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
                     <div style={{ display: "flex", alignItems: "center", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "rgba(255,255,255,0.5)", fontSize: "0.95rem", whiteSpace: "nowrap" }}>+91</div>
                     <input value={phone} onChange={e => { setPhone(e.target.value); setOtpSent(false); setOtpVerified(false); setOtp(""); }} placeholder="Mobile number" type="tel" maxLength={10}
                       disabled={otpVerified}
-                      style={{ ...inputStyle, flex: 1, background: otpVerified ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.05)", border: `1px solid ${otpVerified ? "rgba(16,185,129,0.4)" : "rgba(255,255,255,0.1)"}` }} />
+                      style={{ background: otpVerified ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.05)", border: `1px solid ${otpVerified ? "rgba(16,185,129,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", flex: 1, boxSizing: "border-box" }} />
                     {otpVerified ? (
                       <div style={{ display: "flex", alignItems: "center", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 10, padding: "12px 14px", color: "#10B981", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>✓ Verified</div>
                     ) : (
@@ -634,12 +884,11 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
                       </button>
                     )}
                   </div>
-
                   {otpSent && !otpVerified && (
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                       <input value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Enter 6-digit OTP" type="tel" maxLength={6}
                         onKeyDown={e => e.key === "Enter" && handleVerifyOtp()}
-                        style={{ ...inputStyle, flex: 1, letterSpacing: "0.2em", textAlign: "center", fontSize: "1.1rem" }} />
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "1.1rem", outline: "none", flex: 1, letterSpacing: "0.2em", textAlign: "center", boxSizing: "border-box" }} />
                       <button onClick={handleVerifyOtp} disabled={verifyingOtp} style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.4)", borderRadius: 10, padding: "12px 16px", color: "#10B981", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", whiteSpace: "nowrap" }}>
                         {verifyingOtp ? <Spinner /> : "Verify"}
                       </button>
@@ -648,7 +897,6 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
                 </div>
               )}
             </div>
-
             {mode === "login" && (
               <div style={{ textAlign: "right", marginTop: 8 }}>
                 <button onClick={() => { setForgotMode(true); setError(""); setForgotEmail(email); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: "0.8rem" }}>Forgot password?</button>
@@ -776,31 +1024,66 @@ function useMobile() {
 }
 
 // ─── APP SHELL ────────────────────────────────────────────────────────────────
-function AppShell({ user, onLogout, onHome }) {
+function AppShell({ user, onLogout, onGoHome }) {
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [autoMode, setAutoMode] = useState(true);
   const [profile, setProfile] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [viewAsUser, setViewAsUser] = useState(null); // admin impersonation
   const isMobile = useMobile();
 
+  // Keep global viewAs in sync so api() can inject view_as param
+  useEffect(() => { __viewAsUserId = viewAsUser?.id || null; }, [viewAsUser]);
+
   useEffect(() => {
-    supabase.from("profiles").select("*").eq("id", user.id).single().then(({ data }) => { if (data) setProfile(data); });
+    apiGet("/auth/me").then(r => { if (r.success && r.data) setProfile(r.data); });
   }, [user.id]);
 
+  const isAdmin = profile?.role === "admin";
   const NAV_ICONS = { Dashboard:"⊞", Jobs:"🔍", Applications:"📤", Resume:"📄", "Interview Prep":"🎯", "AI Assistant":"💬", Settings:"⚙️", Admin:"🛡" };
   const BOTTOM_NAV = ["Dashboard", "Jobs", "Applications", "AI Assistant", "Settings"];
+  const navItems = [...NAV_ITEMS, ...(isAdmin ? ["Admin"] : [])];
+
+  const isPaid = ["pro", "premium"].includes(effectivePlan(profile));
+
+  const PaidGate = ({ feature, icon, description }) => (
+    <div style={{ maxWidth: 480, margin: "4rem auto", textAlign: "center", padding: "0 1rem" }}>
+      <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>{icon}</div>
+      <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.4rem", margin: "0 0 0.75rem" }}>{feature}</h2>
+      <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.95rem", lineHeight: 1.6, margin: "0 0 2rem" }}>{description}</p>
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1.5rem", marginBottom: "1.5rem" }}>
+        {[["✅ Unlimited access to " + feature, ""], ["✅ AI-powered responses", ""], ["✅ Personalized to your profile", ""], ["✅ Unlimited sessions", ""]].map(([f]) => (
+          <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: "0.875rem", color: "rgba(255,255,255,0.7)" }}>{f}</div>
+        ))}
+      </div>
+      <button onClick={() => setActiveNav("Settings")} style={{ background: "linear-gradient(135deg,#F59E0B,#EF4444)", border: "none", color: "#fff", borderRadius: 12, padding: "14px 36px", cursor: "pointer", fontWeight: 700, fontSize: "1rem", fontFamily: "'Space Grotesk',sans-serif" }}>
+        👑 Upgrade to Pro — ₹599/mo
+      </button>
+      <div style={{ color: "rgba(255,255,255,0.25)", fontSize: "0.78rem", marginTop: "0.75rem" }}>Cancel anytime · Instant access</div>
+    </div>
+  );
+
+  // When admin is viewing as another user, use that user's context
+  const activeUser = viewAsUser || user;
+  const activeProfile = viewAsUser ? viewAsUser.profile : profile;
+  const activePlan = effectivePlan(activeProfile);
+  const activeIsPaid = ["pro","premium"].includes(activePlan);
 
   const renderPage = () => {
     switch (activeNav) {
-      case "Dashboard": return <DashboardPage user={user} />;
-      case "Jobs": return <JobsPage user={user} />;
-      case "Applications": return <ApplicationsPage user={user} />;
-      case "Resume": return <ResumePage user={user} profile={profile} />;
-      case "Interview Prep": return <InterviewPage />;
-      case "AI Assistant": return <AssistantPage />;
+      case "Dashboard": return <DashboardPage user={activeUser} />;
+      case "Jobs": return <JobsPage user={activeUser} setActiveNav={setActiveNav} />;
+      case "Applications": return <ApplicationsPage user={activeUser} setScreen={setActiveNav} />;
+      case "Resume": return <ResumePage user={activeUser} profile={activeProfile} />;
+      case "Interview Prep": return activeIsPaid
+        ? <InterviewPage />
+        : <PaidGate feature="Interview Preparation" icon="🎯" description="Practice with AI-powered mock interviews, get personalized answers using the STAR method, and ace your next interview. Available on Pro and Premium plans." />;
+      case "AI Assistant": return activeIsPaid
+        ? <AssistantPage />
+        : <PaidGate feature="AI Career Assistant" icon="💬" description="Chat with your personal AI career coach powered by GPT-4. Get resume tips, salary negotiation advice, and career guidance. Available on Pro and Premium plans." />;
       case "Settings": return <SettingsPage user={user} profile={profile} onLogout={onLogout} />;
-      case "Admin": return <AdminPage />;
-      default: return <DashboardPage user={user} />;
+      case "Admin": return <AdminPage onViewAs={(u) => { setViewAsUser(u); setActiveNav("Dashboard"); }} />;
+      default: return <DashboardPage user={activeUser} />;
     }
   };
 
@@ -809,10 +1092,10 @@ function AppShell({ user, onLogout, onHome }) {
   const Sidebar = () => (
     <aside style={{ width: 240, flexShrink: 0, background: "rgba(2,8,23,0.98)", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", ...(isMobile ? { position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 200, transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.25s ease", boxShadow: sidebarOpen ? "4px 0 40px rgba(0,0,0,0.6)" : "none" } : {}) }}>
       <div style={{ padding: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div onClick={onHome} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800 }}>A</div>
-          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700 }}>AutoApply <span style={{ color: "#3B82F6" }}>AI</span></span>
-        </div>
+        <button onClick={onGoHome} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, color: "#fff" }}>M</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, color: "#fff" }}>MachMiles <span style={{ color: "#3B82F6" }}>AI</span></span>
+        </button>
         {isMobile && <button onClick={() => setSidebarOpen(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: "1.2rem", padding: 4 }}>✕</button>}
       </div>
 
@@ -827,11 +1110,13 @@ function AppShell({ user, onLogout, onHome }) {
       </div>
 
       <nav style={{ flex: 1, padding: "0 0.75rem", overflowY: "auto" }}>
-        {NAV_ITEMS.map(item => {
+        {navItems.map(item => {
           const active = activeNav === item;
           return (
             <button key={item} onClick={() => navTo(item)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: "none", background: active ? "rgba(59,130,246,0.15)" : "transparent", color: active ? "#60A5FA" : "rgba(255,255,255,0.55)", cursor: "pointer", textAlign: "left", fontFamily: "Inter,sans-serif", fontSize: "0.9rem", fontWeight: active ? 600 : 400, marginBottom: 2 }}>
-              <span>{NAV_ICONS[item]}</span>{item}
+              <span>{NAV_ICONS[item]}</span>
+              <span style={{ flex: 1 }}>{item}</span>
+              {!isPaid && (item === "Interview Prep" || item === "AI Assistant") && <span style={{ fontSize: "0.65rem", background: "linear-gradient(135deg,#F59E0B,#EF4444)", color: "#fff", borderRadius: 4, padding: "2px 5px", fontWeight: 700 }}>PRO</span>}
             </button>
           );
         })}
@@ -844,7 +1129,7 @@ function AppShell({ user, onLogout, onHome }) {
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile?.full_name || user?.email?.split("@")[0] || "User"}</div>
-            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem", textTransform: "capitalize" }}>{profile?.plan || "Free"} Plan</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem", textTransform: "capitalize" }}>{profile?.role === "admin" ? "Admin · Premium" : (profile?.plan || "Free") + " Plan"}</div>
           </div>
         </div>
         <button onClick={() => { clearTokens(); onLogout(); }} style={{ width: "100%", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "rgba(239,68,68,0.8)", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, fontFamily: "Inter,sans-serif" }}>
@@ -876,6 +1161,24 @@ function AppShell({ user, onLogout, onHome }) {
             {isMobile ? "AI On" : "AI Running · 23 apps today"}
           </div>
         </header>
+
+        {/* Admin "Viewing as" banner */}
+        {viewAsUser && (
+          <div style={{ background: "linear-gradient(135deg,rgba(251,191,36,0.15),rgba(245,158,11,0.1))", borderBottom: "1px solid rgba(251,191,36,0.35)", padding: "8px 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: "1rem" }}>👁</span>
+              <span style={{ fontSize: "0.82rem", color: "#FCD34D", fontWeight: 600 }}>
+                Admin View — Viewing dashboard as: <span style={{ color: "#fff" }}>{viewAsUser.profile?.email || viewAsUser.email}</span>
+                <span style={{ marginLeft: 10, background: (PLAN_COLORS[viewAsUser.profile?.plan || "free"] || ["rgba(255,255,255,0.06)","rgba(255,255,255,0.5)"])[0], color: (PLAN_COLORS[viewAsUser.profile?.plan || "free"] || ["rgba(255,255,255,0.06)","rgba(255,255,255,0.5)"])[1], padding: "2px 8px", borderRadius: 100, fontSize: "0.72rem", textTransform: "capitalize" }}>
+                  {viewAsUser.profile?.plan || "free"}
+                </span>
+              </span>
+            </div>
+            <button onClick={() => { setViewAsUser(null); setActiveNav("Admin"); }} style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)", color: "#FCA5A5", borderRadius: 8, padding: "5px 14px", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600, whiteSpace: "nowrap" }}>
+              ✕ Exit View
+            </button>
+          </div>
+        )}
 
         {/* Page content */}
         <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "1rem" : "1.5rem", paddingBottom: isMobile ? "80px" : "1.5rem" }}>
@@ -1055,6 +1358,19 @@ function DashboardPage({ user }) {
 }
 
 // ─── JOBS PAGE ────────────────────────────────────────────────────────────────
+const JOB_PLATFORM_COLORS = { LinkedIn: "#0A66C2", Naukri: "#FF7555", Internshala: "#00A550", Wellfound: "#EC4E36", Indeed: "#003A9B", Unstop: "#6C2BD9" };
+
+function getPlatformLinks(title, company, location) {
+  const t = encodeURIComponent(title); const l = encodeURIComponent(location || "India");
+  return [
+    { name: "LinkedIn",    url: `https://www.linkedin.com/jobs/search/?keywords=${t}&location=${l}` },
+    { name: "Naukri",      url: `https://www.naukri.com/${encodeURIComponent(title.toLowerCase().replace(/\s+/g,"-"))}-jobs-in-${encodeURIComponent((location||"india").toLowerCase().replace(/\s+/g,"-"))}` },
+    { name: "Indeed",      url: `https://in.indeed.com/jobs?q=${t}&l=${l}` },
+    { name: "Internshala", url: `https://internshala.com/jobs/keywords-${encodeURIComponent(title.toLowerCase().replace(/\s+/g,"-"))}` },
+    { name: "Unstop",      url: `https://unstop.com/jobs?search=${t}` },
+  ];
+}
+
 async function fetchLiveJobs(query, location) {
   const q = encodeURIComponent(`${query || "software developer"} ${location || "India"}`);
   try {
@@ -1065,7 +1381,8 @@ async function fetchLiveJobs(query, location) {
       },
     });
     const data = await res.json();
-    return (data.data || []).map((j, i) => ({
+    if (!data.data?.length) return SAMPLE_JOBS;
+    return data.data.map((j, i) => ({
       id: j.job_id || i,
       title: j.job_title,
       company: j.employer_name,
@@ -1078,21 +1395,47 @@ async function fetchLiveJobs(query, location) {
       color: ["#635BFF","#3395FF","#1A1A2E","#FF6B35","#FC8019","#10B981"][i % 6],
       applyUrl: j.job_apply_link,
       description: j.job_description?.slice(0, 300) + "...",
+      platformLinks: getPlatformLinks(j.job_title, j.employer_name, j.job_city),
     }));
   } catch {
-    return SAMPLE_JOBS;
+    return SAMPLE_JOBS.map(j => ({ ...j, platformLinks: getPlatformLinks(j.title, j.company, location) }));
   }
 }
 
-function JobsPage({ user }) {
+const PLAN_APPLY_LIMITS = { free: 5, pro: 150, premium: Infinity, enterprise: Infinity };
+
+function JobsPage({ user, setActiveNav }) {
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("India");
-  const [jobs, setJobs] = useState(SAMPLE_JOBS);
+  const [jobs, setJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [generatingCL, setGeneratingCL] = useState(null);
   const [coverLetters, setCoverLetters] = useState({});
+  const [clErrors, setClErrors] = useState({});
   const [appliedIds, setAppliedIds] = useState(new Set());
+  const [expandedPlatforms, setExpandedPlatforms] = useState(null);
+  const [monthlyCount, setMonthlyCount] = useState(0);
+  const [limitError, setLimitError] = useState(null);
   const isMobile = useMobile();
+
+  const plan = effectivePlan(user?.profile);
+  const isFree = plan === "free";
+  const applyLimit = PLAN_APPLY_LIMITS[plan] ?? 5;
+  const limitReached = monthlyCount >= applyLimit;
+
+  useEffect(() => {
+    // Count this month's applications
+    apiGet("/applications?limit=500").then(r => {
+      if (!r.success) return;
+      const all = r.data?.applications || [];
+      const now = new Date();
+      const thisMonth = all.filter(a => {
+        const d = new Date(a.applied_at);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      });
+      setMonthlyCount(thisMonth.length);
+    });
+  }, []);
 
   const searchJobs = async () => {
     setLoadingJobs(true);
@@ -1104,20 +1447,69 @@ function JobsPage({ user }) {
   useEffect(() => { searchJobs(); }, []);
 
   const handleGenerateCL = async (job) => {
-    setGeneratingCL(job.id);
-    const cl = await generateCoverLetter(job.title, job.company, "React, TypeScript, Node.js, 4 years experience");
-    setCoverLetters(prev => ({ ...prev, [job.id]: cl }));
+    if (!GEMINI_KEY && !OPENAI_KEY) { setClErrors(prev => ({ ...prev, [job.id]: "AI service not configured. Add VITE_GEMINI_KEY in Vercel." })); return; }
+    setGeneratingCL(job.id); setClErrors(prev => ({ ...prev, [job.id]: null }));
+    try {
+      const cl = await generateCoverLetter(job.title, job.company, "React, TypeScript, Node.js, 4 years experience");
+      if (!cl) throw new Error("Empty response from AI.");
+      setCoverLetters(prev => ({ ...prev, [job.id]: cl }));
+    } catch (e) {
+      const msg = e.message || "";
+      const friendly = msg.includes("GEMINI_KEY_MISSING")
+        ? "Gemini API key not configured. Add VITE_GEMINI_KEY in Vercel environment variables."
+        : msg.includes("quota") || msg.includes("billing") || msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")
+        ? "AI quota exceeded. Please add VITE_GEMINI_KEY in Vercel (free at aistudio.google.com)."
+        : msg.includes("401") || msg.includes("Unauthorized") || msg.includes("API_KEY_INVALID")
+        ? "Invalid API key. Check VITE_GEMINI_KEY in Vercel environment variables."
+        : `Failed to generate cover letter: ${msg}`;
+      setClErrors(prev => ({ ...prev, [job.id]: friendly }));
+    }
     setGeneratingCL(null);
   };
 
   const handleApply = async (job) => {
-    await supabase.from("applications").insert({ user_id: user.id, company: job.company, position: job.title, status: "Applied", match_score: job.match, applied_at: new Date().toISOString() });
+    setLimitError(null);
+    if (limitReached) {
+      setLimitError(`You've reached your ${applyLimit} AI applications limit for this month on the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan.`);
+      return;
+    }
+    await apiPost("/applications", { company: job.company, position: job.title, status: "Applied", match_score: job.match, job_url: job.url || "" });
     setAppliedIds(prev => new Set([...prev, job.id]));
-    if (job.applyUrl) window.open(job.applyUrl, "_blank");
+    setExpandedPlatforms(job.id);
+    setMonthlyCount(prev => prev + 1);
   };
 
   return (
     <div style={{ maxWidth: 1100 }}>
+      {/* Monthly usage bar */}
+      {applyLimit !== Infinity && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "1rem", background: limitReached ? "rgba(239,68,68,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${limitReached ? "rgba(239,68,68,0.3)" : "rgba(255,255,255,0.07)"}`, borderRadius: 12, padding: "10px 16px" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>AI Applications this month</span>
+              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: limitReached ? "#EF4444" : "#60A5FA" }}>{monthlyCount} / {applyLimit}</span>
+            </div>
+            <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+              <div style={{ height: "100%", borderRadius: 4, width: `${Math.min(100, (monthlyCount / applyLimit) * 100)}%`, background: limitReached ? "#EF4444" : "linear-gradient(90deg,#3B82F6,#8B5CF6)", transition: "width 0.3s" }} />
+            </div>
+          </div>
+          {limitReached && (
+            <button onClick={() => setActiveNav && setActiveNav("Settings")} style={{ background: "linear-gradient(135deg,#F59E0B,#EF4444)", border: "none", borderRadius: 8, padding: "6px 14px", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", whiteSpace: "nowrap" }}>
+              Upgrade
+            </button>
+          )}
+        </div>
+      )}
+
+      {limitError && (
+        <div style={{ marginBottom: "1rem", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ color: "#FCA5A5", fontSize: "0.85rem" }}>🚫 {limitError}</span>
+          <button onClick={() => setActiveNav && setActiveNav("Settings")} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 8, padding: "6px 14px", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", whiteSpace: "nowrap" }}>
+            Upgrade Plan
+          </button>
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, marginBottom: "1.5rem" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && searchJobs()} placeholder="Job title, skills..." style={{ flex: 2, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.9rem", outline: "none" }} />
         <div style={{ display: "flex", gap: 10 }}>
@@ -1132,34 +1524,72 @@ function JobsPage({ user }) {
         <div style={{ textAlign: "center", padding: "4rem", color: "rgba(255,255,255,0.4)" }}><Spinner /><div style={{ marginTop: 12 }}>Searching live jobs...</div></div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {jobs.map(job => (
-            <div key={job.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.25rem 1.5rem" }}>
-              <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, flexDirection: isMobile ? "column" : "row" }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "center", width: "100%" }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 10, background: job.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, flexShrink: 0, fontSize: "1rem" }}>{job.logo}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: 2 }}>{job.title}</div>
-                    <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>{job.company} · {job.location} · {job.salary}</div>
-                    <div style={{ marginTop: 6, maxWidth: 240 }}><MatchBar score={job.match} /></div>
+          {jobs.map((job, idx) => {
+            const isLocked = isFree && idx >= 5;
+            return (
+              <div key={job.id} style={{ position: "relative", borderRadius: 16, overflow: "hidden", minHeight: isLocked ? 90 : "auto" }}>
+                {/* Job card */}
+                <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${isLocked ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.07)"}`, borderRadius: 16, padding: "1.25rem 1.5rem", filter: isLocked ? "blur(4px)" : "none", pointerEvents: isLocked ? "none" : "auto", userSelect: isLocked ? "none" : "auto", visibility: isLocked ? "visible" : "visible" }}>
+                  <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 12, flexDirection: isMobile ? "column" : "row" }}>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", width: "100%" }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 10, background: job.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, flexShrink: 0, fontSize: "1rem" }}>{job.logo}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: 2 }}>{job.title}</div>
+                        <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>{job.company} · {job.location} · {job.salary}</div>
+                        <div style={{ marginTop: 6, maxWidth: 240 }}><MatchBar score={job.match} /></div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexShrink: 0, width: isMobile ? "100%" : "auto" }}>
+                      <button onClick={() => handleGenerateCL(job)} disabled={generatingCL === job.id} style={{ flex: isMobile ? 1 : "none", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.3)", color: "#A78BFA", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: "0.78rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        {generatingCL === job.id ? <><Spinner /> Generating...</> : "✍️ Cover Letter"}
+                      </button>
+                      <button onClick={() => handleApply(job)} disabled={appliedIds.has(job.id)} style={{ flex: isMobile ? 1 : "none", background: appliedIds.has(job.id) ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: appliedIds.has(job.id) ? "1px solid rgba(16,185,129,0.3)" : "none", color: appliedIds.has(job.id) ? "#10B981" : "#fff", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: "0.82rem" }}>
+                        {appliedIds.has(job.id) ? "✓ Applied" : "Apply Now"}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Platform links shown after Apply */}
+                  {expandedPlatforms === job.id && (
+                    <div style={{ marginTop: "1rem", padding: "0.875rem 1rem", background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.15)", borderRadius: 10 }}>
+                      <div style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.5)", marginBottom: "0.6rem", fontWeight: 600 }}>Apply on your preferred platform:</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {(job.platformLinks || getPlatformLinks(job.title, job.company, job.location)).map(p => (
+                          <a key={p.name} href={p.url} target="_blank" rel="noopener noreferrer" style={{ background: JOB_PLATFORM_COLORS[p.name] || "#3B82F6", color: "#fff", borderRadius: 7, padding: "6px 14px", fontSize: "0.78rem", fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            {p.name} →
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {clErrors[job.id] && <div style={{ marginTop: "0.75rem", color: "#FCA5A5", fontSize: "0.82rem", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "8px 12px" }}>⚠ {clErrors[job.id]}</div>}
+                  {coverLetters[job.id] && (
+                    <div style={{ marginTop: "1rem", background: "rgba(139,92,246,0.05)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 10, padding: "1rem" }}>
+                      <div style={{ fontWeight: 600, color: "#A78BFA", fontSize: "0.82rem", marginBottom: "0.5rem" }}>✍️ AI-Generated Cover Letter</div>
+                      <p style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.875rem", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>{coverLetters[job.id]}</p>
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: "flex", gap: 8, flexShrink: 0, width: isMobile ? "100%" : "auto" }}>
-                  <button onClick={() => handleGenerateCL(job)} disabled={generatingCL === job.id} style={{ flex: isMobile ? 1 : "none", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.3)", color: "#A78BFA", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: "0.78rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    {generatingCL === job.id ? <><Spinner /> Generating...</> : "✍️ Cover Letter"}
-                  </button>
-                  <button onClick={() => handleApply(job)} disabled={appliedIds.has(job.id)} style={{ flex: isMobile ? 1 : "none", background: appliedIds.has(job.id) ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: appliedIds.has(job.id) ? "1px solid rgba(16,185,129,0.3)" : "none", color: appliedIds.has(job.id) ? "#10B981" : "#fff", borderRadius: 8, padding: "8px 16px", cursor: appliedIds.has(job.id) ? "default" : "pointer", fontWeight: 600, fontSize: "0.82rem" }}>
-                    {appliedIds.has(job.id) ? "✓ Applied" : "Apply Now"}
-                  </button>
-                </div>
+
+                {/* Lock overlay for free users */}
+                {isLocked && (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg,rgba(10,10,25,0.88),rgba(30,15,50,0.92))", backdropFilter: "blur(6px)", borderRadius: 16, padding: "0 1.5rem", border: "1px solid rgba(139,92,246,0.25)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(139,92,246,0.2)", border: "1px solid rgba(139,92,246,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", flexShrink: 0 }}>🔒</div>
+                      <div>
+                        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "0.9rem", color: "#fff", marginBottom: 2 }}>Unlock full job results & Auto-Apply</div>
+                        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.45)" }}>Free plan is limited to 5 results · Upgrade for unlimited access</div>
+                      </div>
+                    </div>
+                    <button onClick={() => setActiveNav && setActiveNav("Settings")} style={{ flexShrink: 0, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, padding: "9px 20px", color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", whiteSpace: "nowrap" }}>
+                      Upgrade to Pro
+                    </button>
+                  </div>
+                )}
               </div>
-              {coverLetters[job.id] && (
-                <div style={{ marginTop: "1rem", background: "rgba(139,92,246,0.05)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 10, padding: "1rem" }}>
-                  <div style={{ fontWeight: 600, color: "#A78BFA", fontSize: "0.82rem", marginBottom: "0.5rem" }}>✍️ AI-Generated Cover Letter</div>
-                  <p style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.875rem", lineHeight: 1.7, margin: 0 }}>{coverLetters[job.id]}</p>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1167,27 +1597,57 @@ function JobsPage({ user }) {
 }
 
 // ─── APPLICATIONS ─────────────────────────────────────────────────────────────
-function ApplicationsPage({ user }) {
+function ApplicationsPage({ user, setScreen }) {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [updatingId, setUpdatingId] = useState(null);
   const isMobile = useMobile();
 
+  const isFree = !["pro","premium"].includes(effectivePlan(user?.profile));
+  const FREE_LIMIT = 5;
+
   const loadApps = () => {
-    const path = statusFilter === "All" ? "/applications?limit=100" : `/applications?limit=100&status=${statusFilter}`;
-    apiGet(path).then(r => { setApps(r.success ? (r.data?.applications || []) : []); setLoading(false); });
+    apiGet("/applications?limit=100").then(r => { setApps(r.success ? (r.data?.applications || []) : []); setLoading(false); });
   };
 
-  useEffect(() => { loadApps(); }, [statusFilter]);
+  useEffect(() => { loadApps(); }, []);
+
+  const updateStatus = async (app, newStatus) => {
+    setUpdatingId(app.id);
+    await apiPut(`/applications/${app.id}`, { status: newStatus });
+    setApps(prev => prev.map(a => a.id === app.id ? { ...a, status: newStatus } : a));
+    setUpdatingId(null);
+  };
 
   const statuses = ["All", ...Object.keys(STATUS_COLORS)];
-  const filtered = apps.filter(a => statusFilter === "All" || a.status === statusFilter);
+  const allFiltered = statusFilter === "All" ? apps : apps.filter(a => a.status === statusFilter);
+  const visibleApps = isFree ? allFiltered.slice(0, FREE_LIMIT) : allFiltered;
+  const hiddenCount = isFree ? Math.max(0, allFiltered.length - FREE_LIMIT) : 0;
+  const filtered = visibleApps;
+
+  const statCounts = apps.reduce((acc, a) => { acc[a.status] = (acc[a.status] || 0) + 1; return acc; }, {});
 
   return (
     <div style={{ maxWidth: 1100 }}>
+      {/* Stats bar */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(4,1fr)", gap: "0.75rem", marginBottom: "1.5rem" }}>
+        {[
+          { label: "Total Applied", value: apps.length, color: "#3B82F6" },
+          { label: "Interviews", value: statCounts["Interview"] || 0, color: "#10B981" },
+          { label: "Offers", value: statCounts["Offer"] || 0, color: "#F59E0B" },
+          { label: "Rejected", value: statCounts["Rejected"] || 0, color: "#EF4444" },
+        ].map(s => (
+          <div key={s.label} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "1rem 1.25rem" }}>
+            <div style={{ fontSize: "1.6rem", fontWeight: 800, color: s.color, fontFamily: "'Space Grotesk',sans-serif" }}>{s.value}</div>
+            <div style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.45)", marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
       <div style={{ display: "flex", gap: 6, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         {statuses.map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)} style={{ background: statusFilter === s ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${statusFilter === s ? "rgba(59,130,246,0.4)" : "rgba(255,255,255,0.07)"}`, color: statusFilter === s ? "#60A5FA" : "rgba(255,255,255,0.5)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600 }}>{s}</button>
+          <button key={s} onClick={() => setStatusFilter(s)} style={{ background: statusFilter === s ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${statusFilter === s ? "rgba(59,130,246,0.4)" : "rgba(255,255,255,0.07)"}`, color: statusFilter === s ? "#60A5FA" : "rgba(255,255,255,0.5)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600 }}>{s} {s !== "All" && statCounts[s] ? `(${statCounts[s]})` : ""}</button>
         ))}
       </div>
 
@@ -1201,7 +1661,10 @@ function ApplicationsPage({ user }) {
                   <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{a.company}</div>
                   <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.78rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.position}</div>
                 </div>
-                <Badge status={a.status} />
+                <select disabled={updatingId === a.id} value={a.status} onChange={e => updateStatus(a, e.target.value)}
+                  style={{ background: STATUS_COLORS[a.status] + "22", border: `1px solid ${STATUS_COLORS[a.status]}55`, color: STATUS_COLORS[a.status], borderRadius: 8, padding: "4px 8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", outline: "none" }}>
+                  {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s} style={{ background: "#1e293b", color: "#fff" }}>{s}</option>)}
+                </select>
               </div>
             ))}
           </div>
@@ -1218,11 +1681,30 @@ function ApplicationsPage({ user }) {
                 </div>
                 <span style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.875rem" }}>{a.position}</span>
                 <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>{a.date || (a.applied_at ? new Date(a.applied_at).toLocaleDateString() : "-")}</span>
-                <Badge status={a.status} />
+                <select disabled={updatingId === a.id} value={a.status} onChange={e => updateStatus(a, e.target.value)}
+                  style={{ background: STATUS_COLORS[a.status] + "22", border: `1px solid ${STATUS_COLORS[a.status]}55`, color: STATUS_COLORS[a.status], borderRadius: 8, padding: "5px 8px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", outline: "none" }}>
+                  {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s} style={{ background: "#1e293b", color: "#fff" }}>{s}</option>)}
+                </select>
               </div>
             ))}
           </div>
         )
+      )}
+
+      {/* Free plan locked applications banner */}
+      {!loading && hiddenCount > 0 && (
+        <div style={{ marginTop: "1rem", background: "linear-gradient(135deg,rgba(59,130,246,0.08),rgba(139,92,246,0.08))", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 16, padding: "1.5rem 2rem", textAlign: "center" }}>
+          <div style={{ fontSize: "1.5rem", marginBottom: 8 }}>🔒</div>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", marginBottom: 4 }}>
+            {hiddenCount} more application{hiddenCount > 1 ? "s" : ""} hidden
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.83rem", marginBottom: "1rem" }}>
+            Free plan shows only your 5 most recent applications. Upgrade to Pro to unlock your full history.
+          </div>
+          <button onClick={() => setScreen && setScreen("Settings")} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", borderRadius: 10, padding: "10px 28px", color: "#fff", fontWeight: 700, fontSize: "0.9rem", cursor: "pointer" }}>
+            Upgrade to Pro — ₹599/mo
+          </button>
+        </div>
       )}
     </div>
   );
@@ -1230,18 +1712,23 @@ function ApplicationsPage({ user }) {
 
 // ─── RESUME SYSTEM ────────────────────────────────────────────────────────────
 const RESUME_TEMPLATES = [
+  // ── FREE (5) ──────────────────────────────────────────────────────────────
   { id: "classic",      name: "Classic",      free: true,  category: "ATS-Friendly", accent: "#2563EB",  layout: "single",  desc: "Clean ATS-optimised single column" },
   { id: "modern",       name: "Modern",       free: true,  category: "Modern",       accent: "#7C3AED",  layout: "sidebar", desc: "Purple gradient sidebar, skill pills" },
   { id: "minimal",      name: "Minimal",      free: true,  category: "Minimal",      accent: "#111827",  layout: "grid",    desc: "Ultra-clean date-grid layout" },
   { id: "professional", name: "Professional", free: true,  category: "Corporate",    accent: "#1E40AF",  layout: "banner",  desc: "Gradient banner header, skill pills" },
   { id: "creative",     name: "Creative",     free: true,  category: "Creative",     accent: "#DC2626",  layout: "split",   desc: "Dark hero with sidebar skill tags" },
-  { id: "executive",    name: "Executive",    free: true,  category: "Corporate",    accent: "#92400E",  layout: "single",  desc: "Premium serif, gold dividers" },
-  { id: "compact",      name: "Compact",      free: true,  category: "Modern",       accent: "#0891B2",  layout: "sidebar", desc: "Teal two-column, great for seniors" },
-  { id: "impact",       name: "Impact",       free: true,  category: "Creative",     accent: "#059669",  layout: "banner",  desc: "Bold centred name, strong accent lines" },
+  // ── PREMIUM ───────────────────────────────────────────────────────────────
+  { id: "compact",      name: "Compact",      free: false, category: "Modern",       accent: "#0891B2",  layout: "sidebar", desc: "Teal two-column, great for seniors" },
+  { id: "impact",       name: "Impact",       free: false, category: "Creative",     accent: "#059669",  layout: "banner",  desc: "Bold centred name, strong accent lines" },
   { id: "chikorita",    name: "Chikorita",    free: false, category: "Modern",       accent: "#16A34A",  layout: "sidebar", desc: "Slim green sidebar — rxresume style" },
   { id: "onyx",         name: "Onyx",         free: false, category: "Corporate",    accent: "#1C1917",  layout: "banner",  desc: "Bold charcoal header, sharp typography" },
   { id: "gengar",       name: "Gengar",       free: false, category: "Creative",     accent: "#6D28D9",  layout: "sidebar", desc: "Dark navy sidebar, vivid purple accents" },
   { id: "pikachu",      name: "Pikachu",      free: false, category: "Minimal",      accent: "#D97706",  layout: "single",  desc: "Warm amber accents, pill skill badges" },
+  { id: "nova",         name: "Nova",         free: false, category: "Modern",       accent: "#0EA5E9",  layout: "sidebar", desc: "Sky-blue sidebar, glassmorphism header" },
+  { id: "ember",        name: "Ember",        free: false, category: "Creative",     accent: "#EA580C",  layout: "split",   desc: "Warm orange-red split, bold section labels" },
+  { id: "slate",        name: "Slate",        free: false, category: "Corporate",    accent: "#475569",  layout: "single",  desc: "Steel-grey corporate, clean serif headings" },
+  { id: "aurora",       name: "Aurora",       free: false, category: "Creative",     accent: "#7C3AED",  layout: "banner",  desc: "Gradient purple-pink banner, airy layout" },
 ];
 
 const PREVIEW_RESUME_DATA = {
@@ -1373,103 +1860,83 @@ function ClassicTemplate({ data }) {
   );
 }
 
-// ── 2. Modern — gradient sidebar, avatar initial ─────────────────────────────
 function ModernTemplate({ data }) {
   const p = data.personal || {};
-  const accent = "#6D28D9";
-  const sideAccent = "#4C1D95";
+  const accent = "#7C3AED";
   return (
-    <div style={{ fontFamily: "'Arial', Helvetica, sans-serif", color: "#1a1a1a", background: "#fff", display: "flex", minHeight: 900, fontSize: 11.5 }}>
-      {/* Sidebar */}
-      <div style={{ width: 200, background: `linear-gradient(175deg,${accent} 0%,${sideAccent} 100%)`, color: "#fff", padding: "36px 20px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 18 }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 76, height: 76, borderRadius: "50%", background: "rgba(255,255,255,0.18)", border: "3px solid rgba(255,255,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, margin: "0 auto 12px", color: "#fff" }}>{(p.name || "?")[0]?.toUpperCase()}</div>
-          <div style={{ fontWeight: 800, fontSize: 13.5, lineHeight: 1.2 }}>{p.name || "Your Name"}</div>
-          {p.title && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginTop: 5, lineHeight: 1.4 }}>{p.title}</div>}
+    <div style={{ fontFamily: "Inter, Arial, sans-serif", color: "#1a1a1a", background: "#fff", display: "flex", minHeight: 900, fontSize: 12 }}>
+      <div style={{ width: 190, background: `linear-gradient(160deg,${accent},#4F46E5)`, color: "#fff", padding: "32px 20px", flexShrink: 0 }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, fontWeight: 700, margin: "0 auto 14px" }}>{(p.name || "?")[0]?.toUpperCase()}</div>
+        <div style={{ textAlign: "center", marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255,255,255,0.2)" }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name || "Your Name"}</div>
+          {p.title && <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>{p.title}</div>}
         </div>
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 10 }}>Contact</div>
-          <div style={{ fontSize: 9.5, lineHeight: 2, color: "rgba(255,255,255,0.85)" }}>
-            {p.email && <div>✉ {p.email}</div>}
-            {p.phone && <div>☎ {p.phone}</div>}
-            {p.location && <div>⊙ {p.location}</div>}
-            {p.linkedin && <div style={{ wordBreak: "break-all" }}>in {p.linkedin}</div>}
-            {p.website && <div style={{ wordBreak: "break-all" }}>🔗 {p.website}</div>}
-          </div>
+        <div style={{ fontSize: 10, lineHeight: 1.8, opacity: 0.9 }}>
+          {p.email && <div>✉ {p.email}</div>}
+          {p.phone && <div>📞 {p.phone}</div>}
+          {p.location && <div>📍 {p.location}</div>}
+          {p.linkedin && <div>in {p.linkedin}</div>}
+          {p.website && <div>🔗 {p.website}</div>}
         </div>
         {data.skills?.length > 0 && (
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 10 }}>Skills</div>
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8, opacity: 0.7 }}>Skills</div>
             {data.skills.map((s, i) => (
-              <div key={i} style={{ marginBottom: 8 }}>
-                {s.category && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", marginBottom: 4, fontWeight: 600 }}>{s.category}</div>}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                  {(s.items || "").split(",").map((sk, j) => (
-                    <span key={j} style={{ fontSize: 8.5, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 100, padding: "1px 6px", color: "#fff" }}>{sk.trim()}</span>
-                  ))}
-                </div>
+              <div key={i} style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 9, opacity: 0.7, marginBottom: 3 }}>{s.category}</div>
+                <div style={{ fontSize: 10, lineHeight: 1.6 }}>{s.items}</div>
               </div>
             ))}
           </div>
         )}
         {data.languages?.length > 0 && (
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 10 }}>Languages</div>
-            {data.languages.map((l, i) => (
-              <div key={i} style={{ fontSize: 9.5, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>
-                {l.language}{l.proficiency && <span style={{ color: "rgba(255,255,255,0.5)" }}> · {l.proficiency}</span>}
-              </div>
-            ))}
-          </div>
-        )}
-        {data.certifications?.length > 0 && (
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 10 }}>Certifications</div>
-            {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 9.5, color: "rgba(255,255,255,0.85)", marginBottom: 5 }}><div style={{ fontWeight: 700 }}>{c.name}</div>{c.issuer && <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 9 }}>{c.issuer}</div>}</div>)}
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8, opacity: 0.7 }}>Languages</div>
+            {data.languages.map((l, i) => <div key={i} style={{ fontSize: 10, marginBottom: 3 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
           </div>
         )}
       </div>
-      {/* Main */}
-      <div style={{ flex: 1, padding: "36px 28px", lineHeight: 1.55 }}>
-        {data.summary && (
-          <div style={{ marginBottom: 20, padding: "12px 16px", background: "#F5F3FF", borderLeft: `3px solid ${accent}`, borderRadius: "0 8px 8px 0" }}>
-            <div style={{ fontWeight: 700, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 5 }}>About Me</div>
-            <p style={{ margin: 0, color: "#4B5563", fontSize: 11, lineHeight: 1.7 }}>{data.summary}</p>
-          </div>
-        )}
+      <div style={{ flex: 1, padding: "32px 28px", lineHeight: 1.5 }}>
+        {data.summary && <div style={{ marginBottom: 18 }}><div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 6 }}>About Me</div><p style={{ margin: 0, color: "#444", fontSize: 11.5 }}>{data.summary}</p></div>}
         {data.experience?.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 20, height: 2, background: accent, display: "inline-block" }} />Experience</div>
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Experience</div>
             {data.experience.map((e, i) => (
-              <div key={i} style={{ marginBottom: 14, paddingLeft: 14, borderLeft: `2px solid ${i === 0 ? accent : "#E5E7EB"}` }}>
-                <div style={{ fontWeight: 700, fontSize: 12.5, color: "#111" }}>{e.position}</div>
-                <div style={{ color: accent, fontSize: 11, fontWeight: 600 }}>{e.company}{e.location ? ` · ${e.location}` : ""}<span style={{ color: "#9CA3AF", fontWeight: 400, fontSize: 10, marginLeft: 8 }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span></div>
-                {e.description && <p style={{ margin: "4px 0 0", color: "#4B5563", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
+              <div key={i} style={{ marginBottom: 12, paddingLeft: 12, borderLeft: `2px solid ${accent}` }}>
+                <div style={{ fontWeight: 700, fontSize: 12 }}>{e.position}</div>
+                <div style={{ color: accent, fontSize: 11 }}>{e.company}{e.location ? ` · ${e.location}` : ""} <span style={{ color: "#888", fontSize: 10, marginLeft: 8 }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span></div>
+                {e.description && <p style={{ margin: "4px 0 0", color: "#555", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
               </div>
             ))}
           </div>
         )}
         {data.education?.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 20, height: 2, background: accent, display: "inline-block" }} />Education</div>
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Education</div>
             {data.education.map((e, i) => (
-              <div key={i} style={{ marginBottom: 9 }}>
+              <div key={i} style={{ marginBottom: 8 }}>
                 <div style={{ fontWeight: 700, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                <div style={{ color: "#555", fontSize: 11 }}>{e.school}{e.gpa ? ` · GPA ${e.gpa}` : ""} <span style={{ color: "#94A3B8", fontSize: 10 }}>{e.endDate || e.startDate}</span></div>
+                <div style={{ color: "#555", fontSize: 11 }}>{e.school} <span style={{ color: "#888", fontSize: 10 }}>{e.endDate || e.startDate}</span></div>
               </div>
             ))}
           </div>
         )}
         {data.projects?.length > 0 && (
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 20, height: 2, background: accent, display: "inline-block" }} />Projects</div>
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Projects</div>
             {data.projects.map((p, i) => (
-              <div key={i} style={{ marginBottom: 10, paddingLeft: 14, borderLeft: `2px solid #E5E7EB` }}>
-                <strong style={{ fontSize: 12, color: "#111" }}>{p.name}</strong>
-                {p.technologies && <span style={{ color: "#9CA3AF", fontSize: 10, marginLeft: 8 }}>{p.technologies}</span>}
-                {p.description && <p style={{ margin: "3px 0 0", color: "#4B5563", fontSize: 11 }}>{p.description}</p>}
+              <div key={i} style={{ marginBottom: 10, paddingLeft: 12, borderLeft: `2px solid ${accent}` }}>
+                <strong style={{ fontSize: 12 }}>{p.name}</strong>
+                {p.technologies && <span style={{ color: "#888", fontSize: 10, marginLeft: 8 }}>{p.technologies}</span>}
+                {p.description && <p style={{ margin: "3px 0 0", color: "#555", fontSize: 11 }}>{p.description}</p>}
               </div>
             ))}
+          </div>
+        )}
+        {data.certifications?.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: 8 }}>Certifications</div>
+            {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}><strong>{c.name}</strong>{c.issuer ? ` · ${c.issuer}` : ""}{c.date ? ` (${c.date})` : ""}</div>)}
           </div>
         )}
       </div>
@@ -1477,89 +1944,87 @@ function ModernTemplate({ data }) {
   );
 }
 
-// ── 3. Minimal — ultra-clean, date-grid layout ───────────────────────────────
 function MinimalTemplate({ data }) {
   const p = data.personal || {};
-  const Rule = () => <div style={{ height: 1, background: "#E5E7EB", margin: "14px 0" }} />;
   return (
-    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#111", background: "#fff", padding: "52px 56px", minHeight: 900, fontSize: 11.5, lineHeight: 1.65 }}>
+    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#111", background: "#fff", padding: "48px 52px", minHeight: 900, fontSize: 12, lineHeight: 1.6 }}>
       <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 32, fontWeight: 300, letterSpacing: "-0.03em", color: "#000", lineHeight: 1 }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 13, color: "#6B7280", marginTop: 6, fontWeight: 400, letterSpacing: "0.01em" }}>{p.title}</div>}
-        <div style={{ display: "flex", gap: 18, marginTop: 10, fontSize: 10.5, color: "#9CA3AF", flexWrap: "wrap" }}>
-          {[p.email, p.phone, p.location, p.linkedin].filter(Boolean).map((v, i) => <span key={i}>{v}</span>)}
+        <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-0.02em", color: "#000" }}>{p.name || "Your Name"}</div>
+        {p.title && <div style={{ fontSize: 13, color: "#666", marginTop: 4, fontWeight: 400 }}>{p.title}</div>}
+        <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: 11, color: "#666", flexWrap: "wrap" }}>
+          {p.email && <span>{p.email}</span>}
+          {p.phone && <span>{p.phone}</span>}
+          {p.location && <span>{p.location}</span>}
+          {p.linkedin && <span>{p.linkedin}</span>}
         </div>
       </div>
-      {data.summary && <><p style={{ margin: 0, color: "#374151", fontSize: 11.5, fontStyle: "italic", lineHeight: 1.75, borderLeft: "2px solid #E5E7EB", paddingLeft: 14 }}>{data.summary}</p><Rule /></>}
+      {data.summary && <div style={{ marginBottom: 22 }}><p style={{ margin: 0, color: "#444", fontSize: 12, borderLeft: "2px solid #ddd", paddingLeft: 12 }}>{data.summary}</p></div>}
       {data.experience?.length > 0 && (
-        <div style={{ marginBottom: 4 }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 14 }}>Experience</div>
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Experience</div>
           {data.experience.map((e, i) => (
-            <div key={i} style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "110px 1fr", gap: "0 24px" }}>
-              <div style={{ fontSize: 10, color: "#9CA3AF", paddingTop: 2, lineHeight: 1.5 }}>{e.startDate}{e.current ? "–\nPresent" : e.endDate ? `–\n${e.endDate}` : ""}</div>
+            <div key={i} style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
+              <div style={{ fontSize: 10, color: "#888", paddingTop: 2 }}>{e.startDate}{e.current ? "–Present" : e.endDate ? `–${e.endDate}` : ""}</div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 12.5, color: "#111" }}>{e.position}</div>
-                <div style={{ color: "#6B7280", fontSize: 11 }}>{e.company}{e.location ? `, ${e.location}` : ""}</div>
-                {e.description && <p style={{ margin: "5px 0 0", color: "#4B5563", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
+                <div style={{ fontWeight: 600, fontSize: 12 }}>{e.position}</div>
+                <div style={{ color: "#666", fontSize: 11 }}>{e.company}{e.location ? `, ${e.location}` : ""}</div>
+                {e.description && <p style={{ margin: "4px 0 0", color: "#555", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
               </div>
             </div>
           ))}
-          <Rule />
         </div>
       )}
       {data.education?.length > 0 && (
-        <div style={{ marginBottom: 4 }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 14 }}>Education</div>
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Education</div>
           {data.education.map((e, i) => (
-            <div key={i} style={{ marginBottom: 12, display: "grid", gridTemplateColumns: "110px 1fr", gap: "0 24px" }}>
-              <div style={{ fontSize: 10, color: "#9CA3AF", paddingTop: 2 }}>{e.endDate || e.startDate}</div>
+            <div key={i} style={{ marginBottom: 10, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
+              <div style={{ fontSize: 10, color: "#888", paddingTop: 2 }}>{e.endDate || e.startDate}</div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                <div style={{ color: "#6B7280", fontSize: 11 }}>{e.school}{e.gpa ? ` · GPA ${e.gpa}` : ""}</div>
+                <div style={{ fontWeight: 600, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
+                <div style={{ color: "#666", fontSize: 11 }}>{e.school}</div>
               </div>
             </div>
           ))}
-          <Rule />
         </div>
       )}
       {data.skills?.length > 0 && (
-        <div style={{ marginBottom: 4 }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 14 }}>Skills</div>
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Skills</div>
           {data.skills.map((s, i) => (
-            <div key={i} style={{ marginBottom: 6, display: "grid", gridTemplateColumns: "110px 1fr", gap: "0 24px" }}>
-              <div style={{ fontSize: 10, color: "#9CA3AF" }}>{s.category}</div>
-              <div style={{ fontSize: 11, color: "#374151" }}>{s.items}</div>
+            <div key={i} style={{ marginBottom: 4, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
+              <div style={{ fontSize: 10, color: "#888" }}>{s.category}</div>
+              <div style={{ fontSize: 11, color: "#444" }}>{s.items}</div>
             </div>
           ))}
-          <Rule />
         </div>
       )}
       {data.projects?.length > 0 && (
-        <div style={{ marginBottom: 4 }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 14 }}>Projects</div>
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 12 }}>Projects</div>
           {data.projects.map((p, i) => (
-            <div key={i} style={{ marginBottom: 12, display: "grid", gridTemplateColumns: "110px 1fr", gap: "0 24px" }}>
-              <div style={{ fontSize: 10, color: "#9CA3AF", paddingTop: 2 }}>{p.technologies}</div>
+            <div key={i} style={{ marginBottom: 10, display: "grid", gridTemplateColumns: "120px 1fr", gap: "0 20px" }}>
+              <div style={{ fontSize: 10, color: "#888", paddingTop: 2 }}>{p.technologies}</div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 12 }}>{p.name}{p.url && <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 10, marginLeft: 8 }}>{p.url}</span>}</div>
-                {p.description && <p style={{ margin: "3px 0 0", color: "#4B5563", fontSize: 11 }}>{p.description}</p>}
+                <div style={{ fontWeight: 600, fontSize: 12 }}>{p.name}</div>
+                {p.description && <p style={{ margin: "2px 0 0", color: "#555", fontSize: 11 }}>{p.description}</p>}
               </div>
             </div>
           ))}
         </div>
       )}
       {(data.certifications?.length > 0 || data.languages?.length > 0) && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           {data.certifications?.length > 0 && (
             <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 10 }}>Certifications</div>
-              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, color: "#374151", marginBottom: 5 }}><strong>{c.name}</strong>{c.issuer ? <span style={{ color: "#9CA3AF" }}> · {c.issuer}</span> : ""}</div>)}
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 8 }}>Certifications</div>
+              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, color: "#444", marginBottom: 4 }}>{c.name}{c.issuer ? ` · ${c.issuer}` : ""}</div>)}
             </div>
           )}
           {data.languages?.length > 0 && (
             <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 10 }}>Languages</div>
-              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, color: "#374151", marginBottom: 4 }}>{l.language}{l.proficiency ? <span style={{ color: "#9CA3AF" }}> · {l.proficiency}</span> : ""}</div>)}
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#999", marginBottom: 8 }}>Languages</div>
+              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, color: "#444", marginBottom: 4 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
             </div>
           )}
         </div>
@@ -1568,183 +2033,170 @@ function MinimalTemplate({ data }) {
   );
 }
 
-// ── 4. Professional — full-width banner header, two-column body ──────────────
 function ProfessionalTemplate({ data }) {
   const p = data.personal || {};
-  const accent = "#1E3A8A";
+  const accent = "#1E40AF";
   return (
-    <div style={{ fontFamily: "Arial, Helvetica, sans-serif", color: "#1a1a1a", background: "#fff", minHeight: 900, fontSize: 11.5, lineHeight: 1.5 }}>
-      {/* Hero header */}
-      <div style={{ background: `linear-gradient(120deg, ${accent} 0%, #1D4ED8 100%)`, color: "#fff", padding: "30px 44px 24px" }}>
-        <div style={{ fontSize: 30, fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1 }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 13, color: "#BFDBFE", marginTop: 6, fontWeight: 500, letterSpacing: "0.03em" }}>{p.title}</div>}
-        <div style={{ display: "flex", gap: 0, marginTop: 12, fontSize: 10, color: "rgba(255,255,255,0.75)", flexWrap: "wrap", borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: 12 }}>
-          {[p.email && `✉ ${p.email}`, p.phone && `☎ ${p.phone}`, p.location && `⊙ ${p.location}`, p.linkedin && `in ${p.linkedin}`].filter(Boolean).map((v, i, arr) => (
-            <span key={i}>{v}{i < arr.length - 1 ? <span style={{ margin: "0 12px", opacity: 0.4 }}>·</span> : ""}</span>
-          ))}
+    <div style={{ fontFamily: "Arial, sans-serif", color: "#1a1a1a", background: "#fff", minHeight: 900, fontSize: 12, lineHeight: 1.5 }}>
+      <div style={{ background: accent, color: "#fff", padding: "28px 40px 22px" }}>
+        <div style={{ fontSize: 28, fontWeight: 700 }}>{p.name || "Your Name"}</div>
+        {p.title && <div style={{ fontSize: 13, opacity: 0.85, marginTop: 3 }}>{p.title}</div>}
+        <div style={{ display: "flex", gap: 20, marginTop: 10, fontSize: 10.5, opacity: 0.85, flexWrap: "wrap" }}>
+          {p.email && <span>✉ {p.email}</span>}
+          {p.phone && <span>☎ {p.phone}</span>}
+          {p.location && <span>⊙ {p.location}</span>}
+          {p.linkedin && <span>in {p.linkedin}</span>}
         </div>
       </div>
-      <div style={{ padding: "24px 44px" }}>
-        {data.summary && <div style={{ marginBottom: 20, padding: "12px 16px", background: "#EFF6FF", borderRadius: 8, fontSize: 11.5, color: "#1E3A8A", lineHeight: 1.7, borderLeft: `4px solid ${accent}` }}>{data.summary}</div>}
+      <div style={{ padding: "24px 40px" }}>
+        {data.summary && <div style={{ marginBottom: 18, padding: "12px 16px", background: "#EFF6FF", borderRadius: 6, fontSize: 11.5, color: "#334155" }}>{data.summary}</div>}
         {data.experience?.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontWeight: 800, fontSize: 10, color: accent, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `2px solid ${accent}`, paddingBottom: 5, marginBottom: 12 }}>Work Experience</div>
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 10 }}>Work Experience</div>
             {data.experience.map((e, i) => (
-              <div key={i} style={{ marginBottom: 13 }}>
+              <div key={i} style={{ marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontWeight: 700, fontSize: 13, color: "#0F172A" }}>{e.position}</span>
-                  <span style={{ fontSize: 10, color: "#64748B", background: "#F1F5F9", padding: "2px 8px", borderRadius: 100 }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span>
+                  <span style={{ fontWeight: 700, fontSize: 12.5 }}>{e.position}</span>
+                  <span style={{ fontSize: 10.5, color: "#666", background: "#F1F5F9", padding: "1px 8px", borderRadius: 100 }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span>
                 </div>
-                <div style={{ color: accent, fontSize: 11, fontWeight: 600, marginBottom: 3 }}>{e.company}{e.location ? ` · ${e.location}` : ""}</div>
-                {e.description && <p style={{ margin: 0, color: "#374151", fontSize: 11, whiteSpace: "pre-line", lineHeight: 1.65 }}>{e.description}</p>}
+                <div style={{ color: accent, fontSize: 11, marginBottom: 3 }}>{e.company}{e.location ? ` · ${e.location}` : ""}</div>
+                {e.description && <p style={{ margin: 0, color: "#444", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
               </div>
             ))}
           </div>
         )}
-        <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           <div>
             {data.education?.length > 0 && (
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontWeight: 800, fontSize: 10, color: accent, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `2px solid ${accent}`, paddingBottom: 5, marginBottom: 10 }}>Education</div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Education</div>
                 {data.education.map((e, i) => (
-                  <div key={i} style={{ marginBottom: 10 }}>
-                    <div style={{ fontWeight: 700, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                    <div style={{ color: "#475569", fontSize: 11 }}>{e.school}{e.gpa ? ` · GPA: ${e.gpa}` : ""}</div>
-                    <div style={{ color: "#94A3B8", fontSize: 10 }}>{e.endDate || e.startDate}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {data.projects?.length > 0 && (
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 10, color: accent, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `2px solid ${accent}`, paddingBottom: 5, marginBottom: 10 }}>Projects</div>
-                {data.projects.map((p, i) => (
-                  <div key={i} style={{ marginBottom: 9 }}>
-                    <strong style={{ fontSize: 12 }}>{p.name}</strong>{p.technologies && <span style={{ color: "#94A3B8", fontSize: 10, marginLeft: 8 }}>({p.technologies})</span>}
-                    {p.description && <p style={{ margin: "2px 0 0", color: "#374151", fontSize: 11 }}>{p.description}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            {data.skills?.length > 0 && (
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontWeight: 800, fontSize: 10, color: accent, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `2px solid ${accent}`, paddingBottom: 5, marginBottom: 10 }}>Skills</div>
-                {data.skills.map((s, i) => (
                   <div key={i} style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#374151", marginBottom: 3 }}>{s.category}</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                      {(s.items || "").split(",").map((sk, j) => <span key={j} style={{ fontSize: 9.5, background: "#EFF6FF", border: `1px solid #BFDBFE`, borderRadius: 100, padding: "1px 7px", color: accent }}>{sk.trim()}</span>)}
-                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
+                    <div style={{ color: "#555", fontSize: 11 }}>{e.school}</div>
+                    <div style={{ color: "#888", fontSize: 10 }}>{e.endDate || e.startDate}</div>
                   </div>
                 ))}
               </div>
             )}
             {data.certifications?.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Certifications</div>
+                {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 5 }}><strong>{c.name}</strong>{c.issuer ? <span style={{ color: "#666" }}> · {c.issuer}</span> : null}</div>)}
+              </div>
+            )}
+          </div>
+          <div>
+            {data.skills?.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 800, fontSize: 10, color: accent, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `2px solid ${accent}`, paddingBottom: 5, marginBottom: 10 }}>Certifications</div>
-                {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 5 }}><strong>{c.name}</strong>{c.issuer && <div style={{ color: "#64748B", fontSize: 10 }}>{c.issuer}</div>}</div>)}
+                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Skills</div>
+                {data.skills.map((s, i) => (
+                  <div key={i} style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 600, color: "#555", marginBottom: 2 }}>{s.category}</div>
+                    <div style={{ fontSize: 11, color: "#333" }}>{s.items}</div>
+                  </div>
+                ))}
               </div>
             )}
             {data.languages?.length > 0 && (
               <div>
-                <div style={{ fontWeight: 800, fontSize: 10, color: accent, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `2px solid ${accent}`, paddingBottom: 5, marginBottom: 10 }}>Languages</div>
+                <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 8 }}>Languages</div>
                 {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
               </div>
             )}
           </div>
         </div>
+        {data.projects?.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: accent, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: `2px solid ${accent}`, paddingBottom: 4, marginBottom: 10 }}>Projects</div>
+            {data.projects.map((p, i) => (
+              <div key={i} style={{ marginBottom: 8 }}>
+                <strong style={{ fontSize: 12 }}>{p.name}</strong>{p.technologies && <span style={{ color: "#888", fontSize: 10, marginLeft: 8 }}>({p.technologies})</span>}
+                {p.description && <p style={{ margin: "2px 0 0", color: "#444", fontSize: 11 }}>{p.description}</p>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── 5. Creative — dark asymmetric hero, skill tags ───────────────────────────
 function CreativeTemplate({ data }) {
   const p = data.personal || {};
-  const accent = "#E11D48";
+  const accent = "#DC2626";
   return (
-    <div style={{ fontFamily: "'Arial', sans-serif", color: "#1a1a1a", background: "#fff", minHeight: 900, fontSize: 11.5, lineHeight: 1.5 }}>
-      {/* Hero */}
-      <div style={{ background: "#0F172A", color: "#fff", padding: "36px 44px", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -30, right: -30, width: 180, height: 180, background: accent, borderRadius: "50%", opacity: 0.12 }} />
-        <div style={{ position: "absolute", bottom: -20, right: 80, width: 100, height: 100, background: "#6D28D9", borderRadius: "50%", opacity: 0.1 }} />
-        <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, color: "#fff" }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 14, color: accent, marginTop: 6, fontWeight: 700 }}>{p.title}</div>}
-        <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 10.5, color: "rgba(255,255,255,0.6)", flexWrap: "wrap" }}>
-          {[p.email, p.phone, p.location, p.linkedin].filter(Boolean).map((v, i, arr) => (
-            <span key={i}>{v}{i < arr.length - 1 ? <span style={{ marginLeft: 14, opacity: 0.3 }}>·</span> : ""}</span>
-          ))}
+    <div style={{ fontFamily: "'Arial', sans-serif", color: "#1a1a1a", background: "#fff", minHeight: 900, fontSize: 12, lineHeight: 1.5 }}>
+      <div style={{ background: "#111", color: "#fff", padding: "36px 40px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: 0, right: 0, width: 200, height: 200, background: accent, borderRadius: "0 0 0 100%", opacity: 0.15 }} />
+        <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em" }}>{p.name || "Your Name"}</div>
+        {p.title && <div style={{ fontSize: 14, color: accent, marginTop: 4, fontWeight: 600 }}>{p.title}</div>}
+        <div style={{ display: "flex", gap: 18, marginTop: 12, fontSize: 10.5, color: "rgba(255,255,255,0.7)", flexWrap: "wrap" }}>
+          {p.email && <span>{p.email}</span>}
+          {p.phone && <span>{p.phone}</span>}
+          {p.location && <span>{p.location}</span>}
+          {p.linkedin && <span>{p.linkedin}</span>}
         </div>
       </div>
-      {/* Body: 1/3 + 2/3 */}
-      <div style={{ display: "grid", gridTemplateColumns: "185px 1fr", minHeight: 700 }}>
-        <div style={{ background: "#F8FAFC", padding: "24px 18px", borderRight: "1px solid #E2E8F0" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", minHeight: 700 }}>
+        <div style={{ background: "#F9FAFB", padding: "24px 20px", borderRight: "1px solid #E5E7EB" }}>
           {data.skills?.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Skills</div>
+              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Skills</div>
               {data.skills.map((s, i) => (
-                <div key={i} style={{ marginBottom: 9 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#374151", marginBottom: 4 }}>{s.category}</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                    {(s.items || "").split(",").map((sk, j) => <span key={j} style={{ fontSize: 9, background: "#fff", border: `1px solid ${accent}33`, borderRadius: 100, padding: "1px 6px", color: "#374151" }}>{sk.trim()}</span>)}
-                  </div>
+                <div key={i} style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#555", marginBottom: 3 }}>{s.category}</div>
+                  <div style={{ fontSize: 10.5, color: "#333", lineHeight: 1.6 }}>{s.items}</div>
                 </div>
               ))}
             </div>
           )}
           {data.education?.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Education</div>
+              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Education</div>
               {data.education.map((e, i) => (
                 <div key={i} style={{ marginBottom: 10 }}>
                   <div style={{ fontWeight: 700, fontSize: 11 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                  <div style={{ color: "#64748B", fontSize: 10 }}>{e.school}</div>
-                  <div style={{ color: "#94A3B8", fontSize: 9.5 }}>{e.endDate || e.startDate}</div>
+                  <div style={{ color: "#666", fontSize: 10 }}>{e.school}</div>
+                  <div style={{ color: "#999", fontSize: 10 }}>{e.endDate || e.startDate}</div>
                 </div>
               ))}
             </div>
           )}
-          {data.languages?.length > 0 && (
+          {data.certifications?.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Languages</div>
-              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 10.5, marginBottom: 5, color: "#374151" }}>{l.language}{l.proficiency && <div style={{ color: "#94A3B8", fontSize: 9.5 }}>{l.proficiency}</div>}</div>)}
+              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Certifications</div>
+              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 10.5, marginBottom: 6 }}><strong>{c.name}</strong>{c.issuer && <div style={{ color: "#666", fontSize: 10 }}>{c.issuer}</div>}</div>)}
             </div>
           )}
-          {data.certifications?.length > 0 && (
+          {data.languages?.length > 0 && (
             <div>
-              <div style={{ fontWeight: 800, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Certifications</div>
-              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 10.5, marginBottom: 7 }}><strong>{c.name}</strong>{c.issuer && <div style={{ color: "#64748B", fontSize: 9.5 }}>{c.issuer}</div>}</div>)}
+              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Languages</div>
+              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 10.5, marginBottom: 4 }}>{l.language}{l.proficiency && <span style={{ color: "#888" }}> · {l.proficiency}</span>}</div>)}
             </div>
           )}
         </div>
         <div style={{ padding: "24px 28px" }}>
-          {data.summary && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 6 }}>About</div>
-              <p style={{ margin: 0, color: "#374151", fontSize: 11.5, lineHeight: 1.75 }}>{data.summary}</p>
-            </div>
-          )}
+          {data.summary && <div style={{ marginBottom: 18 }}><div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 6 }}>About</div><p style={{ margin: 0, color: "#444", fontSize: 11.5 }}>{data.summary}</p></div>}
           {data.experience?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 12 }}>Experience</div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Experience</div>
               {data.experience.map((e, i) => (
-                <div key={i} style={{ marginBottom: 14, paddingLeft: 12, borderLeft: `3px solid ${i === 0 ? accent : "#E2E8F0"}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "#0F172A" }}>{e.position}</div>
-                  <div style={{ color: "#475569", fontSize: 11, marginBottom: 3 }}>{e.company}{e.location ? ` · ${e.location}` : ""}<span style={{ color: "#94A3B8", fontSize: 10, marginLeft: 8 }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span></div>
-                  {e.description && <p style={{ margin: 0, color: "#4B5563", fontSize: 11, whiteSpace: "pre-line", lineHeight: 1.65 }}>{e.description}</p>}
+                <div key={i} style={{ marginBottom: 14, paddingLeft: 10, borderLeft: `3px solid ${i === 0 ? accent : "#E5E7EB"}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 12.5 }}>{e.position}</div>
+                  <div style={{ color: "#666", fontSize: 11, marginBottom: 3 }}>{e.company} {e.startDate && <span style={{ color: "#999", fontSize: 10 }}>· {e.startDate}{e.current ? " – Now" : e.endDate ? ` – ${e.endDate}` : ""}</span>}</div>
+                  {e.description && <p style={{ margin: 0, color: "#555", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
                 </div>
               ))}
             </div>
           )}
           {data.projects?.length > 0 && (
             <div>
-              <div style={{ fontWeight: 800, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, marginBottom: 12 }}>Projects</div>
+              <div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: accent, marginBottom: 10 }}>Projects</div>
               {data.projects.map((p, i) => (
                 <div key={i} style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 12, color: "#0F172A" }}>{p.name}{p.technologies && <span style={{ fontWeight: 400, color: "#94A3B8", fontSize: 10, marginLeft: 8 }}>{p.technologies}</span>}</div>
-                  {p.description && <p style={{ margin: "3px 0 0", color: "#4B5563", fontSize: 11 }}>{p.description}</p>}
+                  <div style={{ fontWeight: 700, fontSize: 12 }}>{p.name}{p.technologies && <span style={{ fontWeight: 400, color: "#888", fontSize: 10, marginLeft: 8 }}>{p.technologies}</span>}</div>
+                  {p.description && <p style={{ margin: "2px 0 0", color: "#555", fontSize: 11 }}>{p.description}</p>}
                 </div>
               ))}
             </div>
@@ -1755,99 +2207,91 @@ function CreativeTemplate({ data }) {
   );
 }
 
-// ── 6. Executive — premium serif, centred header, gold accents ───────────────
 function ExecutiveTemplate({ data }) {
   const p = data.personal || {};
-  const accent = "#92400E";
-  const gold = "#B45309";
   return (
-    <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", color: "#1a1a1a", background: "#fff", padding: "48px 52px", minHeight: 900, fontSize: 11.5, lineHeight: 1.6 }}>
-      {/* Centred header */}
-      <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: "0.06em", color: "#0C0A09", textTransform: "uppercase", lineHeight: 1 }}>{p.name || "Your Name"}</div>
-        {p.title && <div style={{ fontSize: 12.5, color: gold, marginTop: 7, fontStyle: "italic", fontWeight: 400, letterSpacing: "0.03em" }}>{p.title}</div>}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, margin: "14px 0 0" }}>
-          <div style={{ flex: 1, height: 1, background: gold, opacity: 0.4 }} />
-          <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#57534E" }}>
-            {[p.email, p.phone, p.location, p.linkedin].filter(Boolean).map((v, i, arr) => (
-              <span key={i}>{v}{i < arr.length - 1 ? <span style={{ marginLeft: 16, color: gold, opacity: 0.5 }}>·</span> : ""}</span>
-            ))}
-          </div>
-          <div style={{ flex: 1, height: 1, background: gold, opacity: 0.4 }} />
+    <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", color: "#1a1a1a", background: "#fff", padding: "44px 48px", minHeight: 900, fontSize: 12, lineHeight: 1.6 }}>
+      <div style={{ textAlign: "center", marginBottom: 24 }}>
+        <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "0.04em", color: "#0F172A" }}>{(p.name || "Your Name").toUpperCase()}</div>
+        {p.title && <div style={{ fontSize: 13, color: "#475569", marginTop: 5, fontStyle: "italic" }}>{p.title}</div>}
+        <div style={{ width: 60, height: 2, background: "#0F172A", margin: "12px auto" }} />
+        <div style={{ display: "flex", gap: 20, justifyContent: "center", fontSize: 10.5, color: "#555", flexWrap: "wrap" }}>
+          {p.email && <span>{p.email}</span>}
+          {p.phone && <span>{p.phone}</span>}
+          {p.location && <span>{p.location}</span>}
+          {p.linkedin && <span>{p.linkedin}</span>}
         </div>
       </div>
       {data.summary && (
-        <div style={{ marginBottom: 22, textAlign: "center" }}>
-          <p style={{ margin: "0 auto", color: "#44403C", fontSize: 11.5, fontStyle: "italic", lineHeight: 1.8, maxWidth: 520 }}>{data.summary}</p>
-          <div style={{ width: 48, height: 1, background: gold, margin: "14px auto 0", opacity: 0.5 }} />
+        <div style={{ marginBottom: 20, textAlign: "center" }}>
+          <p style={{ margin: "0 auto", color: "#444", fontSize: 11.5, fontStyle: "italic", maxWidth: 480 }}>{data.summary}</p>
         </div>
       )}
       {data.experience?.length > 0 && (
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ textAlign: "center", fontWeight: 700, fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: gold, marginBottom: 14 }}>Professional Experience</div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 12 }}>Professional Experience</div>
           {data.experience.map((e, i) => (
-            <div key={i} style={{ marginBottom: 16 }}>
+            <div key={i} style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: "#0C0A09" }}>{e.position}</span>
-                <span style={{ color: "#78716C", fontSize: 10.5, fontStyle: "italic" }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span>
+                <span style={{ fontWeight: 700, fontSize: 12.5 }}>{e.position}</span>
+                <span style={{ color: "#666", fontSize: 10.5, fontStyle: "italic" }}>{e.startDate}{e.current ? " – Present" : e.endDate ? ` – ${e.endDate}` : ""}</span>
               </div>
-              <div style={{ color: gold, fontSize: 11, fontStyle: "italic", marginBottom: 4 }}>{e.company}{e.location ? `, ${e.location}` : ""}</div>
-              {e.description && <p style={{ margin: 0, color: "#44403C", fontSize: 11, whiteSpace: "pre-line", lineHeight: 1.7 }}>{e.description}</p>}
-              {i < data.experience.length - 1 && <div style={{ height: 1, background: "#E7E5E4", marginTop: 14 }} />}
+              <div style={{ color: "#475569", fontSize: 11, fontStyle: "italic", marginBottom: 3 }}>{e.company}{e.location ? `, ${e.location}` : ""}</div>
+              {e.description && <p style={{ margin: 0, color: "#444", fontSize: 11, whiteSpace: "pre-line" }}>{e.description}</p>}
             </div>
           ))}
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 40px" }}>
-        <div>
-          {data.education?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: gold, marginBottom: 12 }}>Education</div>
-              {data.education.map((e, i) => (
-                <div key={i} style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
-                  <div style={{ color: "#57534E", fontSize: 11, fontStyle: "italic" }}>{e.school}</div>
-                  <div style={{ color: "#A8A29E", fontSize: 10 }}>{e.endDate || e.startDate}</div>
-                </div>
-              ))}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 32px" }}>
+        {data.education?.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 10 }}>Education</div>
+            {data.education.map((e, i) => (
+              <div key={i} style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 12 }}>{e.degree}{e.field ? ` in ${e.field}` : ""}</div>
+                <div style={{ color: "#475569", fontSize: 11, fontStyle: "italic" }}>{e.school}</div>
+                <div style={{ color: "#888", fontSize: 10 }}>{e.endDate || e.startDate}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {data.skills?.length > 0 && (
+          <div>
+            <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 10 }}>Core Competencies</div>
+            {data.skills.map((s, i) => (
+              <div key={i} style={{ marginBottom: 5 }}>
+                <span style={{ fontWeight: 700, fontSize: 11 }}>{s.category}: </span>
+                <span style={{ fontSize: 11, color: "#444" }}>{s.items}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {data.projects?.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 10 }}>Key Projects</div>
+          {data.projects.map((p, i) => (
+            <div key={i} style={{ marginBottom: 8 }}>
+              <strong style={{ fontSize: 12 }}>{p.name}</strong>{p.technologies && <span style={{ fontSize: 10, color: "#888", marginLeft: 8, fontStyle: "italic" }}>({p.technologies})</span>}
+              {p.description && <p style={{ margin: "2px 0 0", color: "#444", fontSize: 11 }}>{p.description}</p>}
             </div>
-          )}
+          ))}
+        </div>
+      )}
+      {(data.certifications?.length > 0 || data.languages?.length > 0) && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 32px", marginTop: 12 }}>
           {data.certifications?.length > 0 && (
             <div>
-              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: gold, marginBottom: 12 }}>Certifications</div>
-              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 6 }}><strong>{c.name}</strong>{c.issuer && <span style={{ color: "#78716C" }}> · {c.issuer}</span>}{c.date && <span style={{ color: "#A8A29E" }}> ({c.date})</span>}</div>)}
-            </div>
-          )}
-        </div>
-        <div>
-          {data.skills?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: gold, marginBottom: 12 }}>Core Competencies</div>
-              {data.skills.map((s, i) => (
-                <div key={i} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #F5F5F4" }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "#44403C", marginBottom: 3 }}>{s.category}</div>
-                  <div style={{ fontSize: 11, color: "#57534E" }}>{s.items}</div>
-                </div>
-              ))}
+              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 8 }}>Certifications</div>
+              {data.certifications.map((c, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}>{c.name}{c.issuer ? ` · ${c.issuer}` : ""}</div>)}
             </div>
           )}
           {data.languages?.length > 0 && (
             <div>
-              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: gold, marginBottom: 12 }}>Languages</div>
-              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, marginBottom: 5, color: "#44403C" }}>{l.language}{l.proficiency ? <span style={{ color: "#78716C" }}> · {l.proficiency}</span> : ""}</div>)}
+              <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "#0F172A", marginBottom: 8 }}>Languages</div>
+              {data.languages.map((l, i) => <div key={i} style={{ fontSize: 11, marginBottom: 4 }}>{l.language}{l.proficiency ? ` · ${l.proficiency}` : ""}</div>)}
             </div>
           )}
-        </div>
-      </div>
-      {data.projects?.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ textAlign: "center", fontWeight: 700, fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: gold, marginBottom: 14 }}>Key Projects</div>
-          {data.projects.map((p, i) => (
-            <div key={i} style={{ marginBottom: 10 }}>
-              <strong style={{ fontSize: 12 }}>{p.name}</strong>{p.technologies && <span style={{ fontSize: 10, color: "#A8A29E", marginLeft: 8, fontStyle: "italic" }}>({p.technologies})</span>}
-              {p.description && <p style={{ margin: "3px 0 0", color: "#44403C", fontSize: 11 }}>{p.description}</p>}
-            </div>
-          ))}
         </div>
       )}
     </div>
@@ -2445,21 +2889,192 @@ function PikachuTemplate({ data }) {
   );
 }
 
+function NovaTemplate({ data }) {
+  const p = data.personal || {}; const exp = data.experience || []; const edu = data.education || []; const skills = data.skills || [];
+  return (
+    <div style={{ fontFamily: "'Segoe UI',sans-serif", color: "#0f172a", background: "#fff", display: "flex", minHeight: 900, fontSize: 12 }}>
+      <div style={{ width: 220, background: "linear-gradient(180deg,#0EA5E9 0%,#0284C7 100%)", padding: "36px 20px", flexShrink: 0, color: "#fff" }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, marginBottom: 16, border: "3px solid rgba(255,255,255,0.5)" }}>{(p.name||"?")[0]}</div>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4, lineHeight: 1.2 }}>{p.name || "Your Name"}</div>
+        <div style={{ fontSize: 10, opacity: 0.85, marginBottom: 20, fontWeight: 500 }}>{p.title || "Job Title"}</div>
+        <div style={{ fontSize: 10, marginBottom: 20, lineHeight: 1.7, opacity: 0.9 }}>
+          {p.email && <div>✉ {p.email}</div>}{p.phone && <div>📞 {p.phone}</div>}{p.location && <div>📍 {p.location}</div>}
+        </div>
+        {skills.length > 0 && <><div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.1em", marginBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.3)", paddingBottom: 6 }}>SKILLS</div>
+          {skills.map((s,i) => <div key={i} style={{ background: "rgba(255,255,255,0.18)", borderRadius: 4, padding: "3px 8px", fontSize: 10, marginBottom: 5, fontWeight: 500 }}>{s}</div>)}</>}
+      </div>
+      <div style={{ flex: 1, padding: "36px 32px" }}>
+        {p.summary && <><div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", color: "#0EA5E9", marginBottom: 8, borderBottom: "2px solid #0EA5E9", paddingBottom: 4 }}>PROFILE</div><p style={{ lineHeight: 1.7, color: "#475569", marginBottom: 24, fontSize: 11 }}>{p.summary}</p></>}
+        {exp.length > 0 && <><div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", color: "#0EA5E9", marginBottom: 10, borderBottom: "2px solid #0EA5E9", paddingBottom: 4 }}>EXPERIENCE</div>
+          {exp.map((e,i) => <div key={i} style={{ marginBottom: 16 }}><div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontWeight: 700, fontSize: 12 }}>{e.title}</span><span style={{ fontSize: 10, color: "#64748b", background: "#f0f9ff", padding: "2px 8px", borderRadius: 4 }}>{e.start} – {e.end||"Present"}</span></div><div style={{ color: "#0EA5E9", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{e.company}{e.location ? ` · ${e.location}` : ""}</div><p style={{ color: "#475569", lineHeight: 1.6, margin: 0, fontSize: 11 }}>{e.description}</p></div>)}</>}
+        {edu.length > 0 && <><div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", color: "#0EA5E9", marginBottom: 10, borderBottom: "2px solid #0EA5E9", paddingBottom: 4, marginTop: 20 }}>EDUCATION</div>
+          {edu.map((e,i) => <div key={i} style={{ marginBottom: 10 }}><div style={{ fontWeight: 700 }}>{e.degree}</div><div style={{ color: "#0EA5E9", fontSize: 11 }}>{e.school}</div><div style={{ color: "#94a3b8", fontSize: 10 }}>{e.year}</div></div>)}</>}
+      </div>
+    </div>
+  );
+}
+
+function EmberTemplate({ data }) {
+  const p = data.personal || {}; const exp = data.experience || []; const edu = data.education || []; const skills = data.skills || [];
+  return (
+    <div style={{ fontFamily: "'Arial',sans-serif", color: "#1c1917", background: "#fff", minHeight: 900, fontSize: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", background: "linear-gradient(135deg,#EA580C,#DC2626)", padding: "32px 40px", color: "#fff", gap: 20 }}>
+        <div><div style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.03em", lineHeight: 1.1 }}>{p.name || "Your Name"}</div><div style={{ fontWeight: 500, fontSize: 12, opacity: 0.9, marginTop: 6 }}>{p.title || "Job Title"}</div></div>
+        <div style={{ fontSize: 10, textAlign: "right", lineHeight: 2, opacity: 0.9 }}>{p.email && <div>{p.email}</div>}{p.phone && <div>{p.phone}</div>}{p.location && <div>{p.location}</div>}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 0 }}>
+        <div style={{ padding: "28px 32px" }}>
+          {p.summary && <><div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.12em", color: "#EA580C", marginBottom: 8 }}>ABOUT</div><p style={{ lineHeight: 1.7, color: "#44403c", marginBottom: 20 }}>{p.summary}</p></>}
+          {exp.length > 0 && <><div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.12em", color: "#EA580C", marginBottom: 10 }}>EXPERIENCE</div>
+            {exp.map((e,i) => <div key={i} style={{ marginBottom: 16, paddingLeft: 12, borderLeft: "3px solid #EA580C" }}><div style={{ fontWeight: 700 }}>{e.title} <span style={{ color: "#EA580C" }}>@ {e.company}</span></div><div style={{ color: "#78716c", fontSize: 10, marginBottom: 4 }}>{e.start} – {e.end||"Present"}{e.location ? ` · ${e.location}` : ""}</div><p style={{ color: "#57534e", lineHeight: 1.6, margin: 0 }}>{e.description}</p></div>)}</>}
+        </div>
+        <div style={{ padding: "28px 24px", background: "#fff7ed", borderLeft: "1px solid #fed7aa" }}>
+          {skills.length > 0 && <><div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.12em", color: "#EA580C", marginBottom: 10 }}>SKILLS</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>{skills.map((s,i) => <span key={i} style={{ background: "#EA580C", color: "#fff", borderRadius: 4, padding: "3px 9px", fontSize: 10, fontWeight: 600 }}>{s}</span>)}</div></>}
+          {edu.length > 0 && <><div style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.12em", color: "#EA580C", marginBottom: 10 }}>EDUCATION</div>
+            {edu.map((e,i) => <div key={i} style={{ marginBottom: 12 }}><div style={{ fontWeight: 700, fontSize: 11 }}>{e.degree}</div><div style={{ color: "#EA580C", fontSize: 10 }}>{e.school}</div><div style={{ color: "#a8a29e", fontSize: 10 }}>{e.year}</div></div>)}</>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlateTemplate({ data }) {
+  const p = data.personal || {}; const exp = data.experience || []; const edu = data.education || []; const skills = data.skills || [];
+  return (
+    <div style={{ fontFamily: "Georgia,'Times New Roman',serif", color: "#1e293b", background: "#fff", padding: "44px 52px", minHeight: 900, fontSize: 12 }}>
+      <div style={{ borderBottom: "3px solid #475569", paddingBottom: 18, marginBottom: 28 }}>
+        <div style={{ fontFamily: "'Arial',sans-serif", fontWeight: 900, fontSize: 26, letterSpacing: "-0.02em", color: "#0f172a" }}>{p.name || "Your Name"}</div>
+        <div style={{ fontFamily: "'Arial',sans-serif", fontWeight: 500, fontSize: 13, color: "#475569", marginTop: 4 }}>{p.title || "Job Title"}</div>
+        <div style={{ display: "flex", gap: 20, marginTop: 10, fontSize: 10, color: "#64748b", fontFamily: "'Arial',sans-serif" }}>
+          {p.email && <span>{p.email}</span>}{p.phone && <span>{p.phone}</span>}{p.location && <span>{p.location}</span>}
+        </div>
+      </div>
+      {p.summary && <><div style={{ fontFamily: "'Arial',sans-serif", fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", color: "#475569", marginBottom: 8 }}>PROFESSIONAL SUMMARY</div><p style={{ lineHeight: 1.8, marginBottom: 24, color: "#334155" }}>{p.summary}</p></>}
+      {exp.length > 0 && <><div style={{ fontFamily: "'Arial',sans-serif", fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", color: "#475569", borderBottom: "1px solid #cbd5e1", paddingBottom: 4, marginBottom: 14 }}>PROFESSIONAL EXPERIENCE</div>
+        {exp.map((e,i) => <div key={i} style={{ marginBottom: 18 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontFamily: "'Arial',sans-serif", fontWeight: 700, fontSize: 12 }}>{e.title}, <span style={{ color: "#475569" }}>{e.company}</span></span><span style={{ fontFamily: "'Arial',sans-serif", fontSize: 10, color: "#94a3b8" }}>{e.start} – {e.end||"Present"}</span></div>{e.location && <div style={{ fontFamily: "'Arial',sans-serif", fontSize: 10, color: "#94a3b8", marginBottom: 4 }}>{e.location}</div>}<p style={{ lineHeight: 1.7, margin: 0, color: "#475569" }}>{e.description}</p></div>)}</>}
+      {skills.length > 0 && <><div style={{ fontFamily: "'Arial',sans-serif", fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", color: "#475569", borderBottom: "1px solid #cbd5e1", paddingBottom: 4, marginBottom: 12, marginTop: 20 }}>CORE COMPETENCIES</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "4px 20px" }}>{skills.map((s,i) => <div key={i} style={{ fontSize: 11, color: "#334155", padding: "3px 0", borderBottom: "1px dotted #e2e8f0" }}>{s}</div>)}</div></>}
+      {edu.length > 0 && <><div style={{ fontFamily: "'Arial',sans-serif", fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", color: "#475569", borderBottom: "1px solid #cbd5e1", paddingBottom: 4, marginBottom: 12, marginTop: 20 }}>EDUCATION</div>
+        {edu.map((e,i) => <div key={i} style={{ marginBottom: 10, display: "flex", justifyContent: "space-between" }}><div><div style={{ fontFamily: "'Arial',sans-serif", fontWeight: 700 }}>{e.degree}</div><div style={{ color: "#64748b", fontSize: 11 }}>{e.school}</div></div><div style={{ fontFamily: "'Arial',sans-serif", fontSize: 10, color: "#94a3b8" }}>{e.year}</div></div>)}</>}
+    </div>
+  );
+}
+
+function AuroraTemplate({ data }) {
+  const p = data.personal || {}; const exp = data.experience || []; const edu = data.education || []; const skills = data.skills || [];
+  return (
+    <div style={{ fontFamily: "'Segoe UI',sans-serif", color: "#1e1b4b", background: "#fff", minHeight: 900, fontSize: 12 }}>
+      <div style={{ background: "linear-gradient(135deg,#7C3AED 0%,#EC4899 60%,#F59E0B 100%)", padding: "40px 44px", color: "#fff" }}>
+        <div style={{ fontWeight: 900, fontSize: 28, letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 6 }}>{p.name || "Your Name"}</div>
+        <div style={{ fontSize: 13, fontWeight: 400, opacity: 0.9, marginBottom: 14 }}>{p.title || "Job Title"}</div>
+        <div style={{ display: "flex", gap: 18, fontSize: 10, opacity: 0.85 }}>
+          {p.email && <span>✉ {p.email}</span>}{p.phone && <span>📞 {p.phone}</span>}{p.location && <span>📍 {p.location}</span>}
+        </div>
+      </div>
+      <div style={{ padding: "32px 44px" }}>
+        {p.summary && <><div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", background: "linear-gradient(135deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 8 }}>ABOUT ME</div><p style={{ lineHeight: 1.8, color: "#374151", marginBottom: 24 }}>{p.summary}</p></>}
+        {exp.length > 0 && <><div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", background: "linear-gradient(135deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 10, borderBottom: "2px solid", borderImage: "linear-gradient(135deg,#7C3AED,#EC4899) 1", paddingBottom: 6 }}>EXPERIENCE</div>
+          {exp.map((e,i) => <div key={i} style={{ marginBottom: 18, padding: "12px 16px", background: i%2===0 ? "#faf5ff" : "#fdf2f8", borderRadius: 8, borderLeft: "3px solid #7C3AED" }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}><span style={{ fontWeight: 700 }}>{e.title}</span><span style={{ fontSize: 10, color: "#7C3AED", fontWeight: 600 }}>{e.start} – {e.end||"Present"}</span></div><div style={{ color: "#EC4899", fontWeight: 600, fontSize: 11, marginBottom: 4 }}>{e.company}{e.location ? ` · ${e.location}` : ""}</div><p style={{ color: "#4b5563", lineHeight: 1.6, margin: 0 }}>{e.description}</p></div>)}</>}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 24 }}>
+          {skills.length > 0 && <div><div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", color: "#7C3AED", marginBottom: 10 }}>SKILLS</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{skills.map((s,i) => <span key={i} style={{ background: "linear-gradient(135deg,#7C3AED,#EC4899)", color: "#fff", borderRadius: 20, padding: "3px 10px", fontSize: 10, fontWeight: 600 }}>{s}</span>)}</div></div>}
+          {edu.length > 0 && <div><div style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", color: "#7C3AED", marginBottom: 10 }}>EDUCATION</div>
+            {edu.map((e,i) => <div key={i} style={{ marginBottom: 10 }}><div style={{ fontWeight: 700 }}>{e.degree}</div><div style={{ color: "#EC4899", fontSize: 11 }}>{e.school}</div><div style={{ color: "#9ca3af", fontSize: 10 }}>{e.year}</div></div>)}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ResumeTemplate({ templateId, data }) {
   switch (templateId) {
     case "modern":       return <ModernTemplate data={data} />;
     case "minimal":      return <MinimalTemplate data={data} />;
     case "professional": return <ProfessionalTemplate data={data} />;
     case "creative":     return <CreativeTemplate data={data} />;
-    case "executive":    return <ExecutiveTemplate data={data} />;
     case "compact":      return <CompactTemplate data={data} />;
     case "impact":       return <ImpactTemplate data={data} />;
     case "chikorita":    return <ChikoritaTemplate data={data} />;
     case "onyx":         return <OnyxTemplate data={data} />;
     case "gengar":       return <GengarTemplate data={data} />;
     case "pikachu":      return <PikachuTemplate data={data} />;
+    case "nova":         return <NovaTemplate data={data} />;
+    case "ember":        return <EmberTemplate data={data} />;
+    case "slate":        return <SlateTemplate data={data} />;
+    case "aurora":       return <AuroraTemplate data={data} />;
     default:             return <ClassicTemplate data={data} />;
   }
+}
+
+// ── Template Mock Preview ─────────────────────────────────────────────────────
+function TemplateMockPreview({ template: t }) {
+  const a = t.accent;
+  if (t.layout === "sidebar") return (
+    <div style={{ display: "flex", height: "100%", fontFamily: "sans-serif" }}>
+      <div style={{ width: "35%", background: a, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.3)", margin: "0 auto 6px" }} />
+        {[70, 55, 60, 45, 50].map((w, i) => <div key={i} style={{ height: 5, width: `${w}%`, background: "rgba(255,255,255,0.35)", borderRadius: 3 }} />)}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", margin: "4px 0" }} />
+        {[80, 65, 75].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: "rgba(255,255,255,0.25)", borderRadius: 3 }} />)}
+      </div>
+      <div style={{ flex: 1, padding: "12px 10px", display: "flex", flexDirection: "column", gap: 5 }}>
+        <div style={{ height: 10, width: "75%", background: "#1e293b", borderRadius: 3 }} />
+        <div style={{ height: 6, width: "50%", background: a + "88", borderRadius: 3, marginBottom: 4 }} />
+        {[90, 85, 80, 70, 85, 60].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: "#cbd5e1", borderRadius: 2 }} />)}
+        <div style={{ height: 1, background: "#e2e8f0", margin: "4px 0" }} />
+        {[75, 70, 65, 80].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: "#cbd5e1", borderRadius: 2 }} />)}
+      </div>
+    </div>
+  );
+  if (t.layout === "banner") return (
+    <div style={{ height: "100%", fontFamily: "sans-serif" }}>
+      <div style={{ background: `linear-gradient(135deg,${a},${a}bb)`, padding: "18px 14px", marginBottom: 8 }}>
+        <div style={{ height: 10, width: "55%", background: "rgba(255,255,255,0.9)", borderRadius: 3, marginBottom: 5 }} />
+        <div style={{ height: 5, width: "40%", background: "rgba(255,255,255,0.5)", borderRadius: 3 }} />
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>{[30, 35, 28].map((w, i) => <div key={i} style={{ height: 4, width: w, background: "rgba(255,255,255,0.4)", borderRadius: 3 }} />)}</div>
+      </div>
+      <div style={{ padding: "0 14px", display: "flex", flexDirection: "column", gap: 5 }}>
+        {[90, 85, 80, 70, 85, 60, 75].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: i === 0 ? a + "88" : "#cbd5e1", borderRadius: 2 }} />)}
+      </div>
+    </div>
+  );
+  if (t.layout === "split") return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", height: "100%" }}>
+      <div style={{ background: `linear-gradient(180deg,${a},${a}cc)`, padding: "12px 10px", display: "flex", flexDirection: "column", gap: 5 }}>
+        <div style={{ height: 9, width: "80%", background: "rgba(255,255,255,0.85)", borderRadius: 3 }} />
+        <div style={{ height: 5, width: "60%", background: "rgba(255,255,255,0.45)", borderRadius: 3, marginBottom: 6 }} />
+        {[70, 80, 65, 75, 55, 70].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: "rgba(255,255,255,0.3)", borderRadius: 2 }} />)}
+      </div>
+      <div style={{ padding: "12px 10px", display: "flex", flexDirection: "column", gap: 5 }}>
+        <div style={{ height: 5, width: "60%", background: a + "99", borderRadius: 3, marginBottom: 4 }} />
+        {[85, 75, 90, 70, 80, 65].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: "#cbd5e1", borderRadius: 2 }} />)}
+      </div>
+    </div>
+  );
+  if (t.layout === "grid") return (
+    <div style={{ padding: "12px 14px", height: "100%", fontFamily: "sans-serif" }}>
+      <div style={{ borderBottom: `2px solid ${a}`, paddingBottom: 8, marginBottom: 8 }}>
+        <div style={{ height: 10, width: "55%", background: "#1e293b", borderRadius: 3, marginBottom: 4 }} />
+        <div style={{ height: 4, width: "40%", background: a + "88", borderRadius: 3 }} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        {[80, 70, 85, 65, 75, 80, 60, 70].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: "#cbd5e1", borderRadius: 2 }} />)}
+      </div>
+    </div>
+  );
+  // single column (classic/default)
+  return (
+    <div style={{ padding: "12px 14px", height: "100%", fontFamily: "sans-serif" }}>
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ height: 10, width: "55%", background: "#1e293b", borderRadius: 3, marginBottom: 4 }} />
+        <div style={{ height: 4, width: "40%", background: a + "99", borderRadius: 3, marginBottom: 4 }} />
+        <div style={{ height: 3, width: "100%", background: a, borderRadius: 2, marginBottom: 6 }} />
+        <div style={{ display: "flex", gap: 10 }}>{[28, 32, 24].map((w, i) => <div key={i} style={{ height: 3, width: w, background: "#94a3b8", borderRadius: 2 }} />)}</div>
+      </div>
+      {[85, 75, 90, 70, 80, 65, 75, 60].map((w, i) => <div key={i} style={{ height: 4, width: `${w}%`, background: i % 4 === 0 ? a + "99" : "#cbd5e1", borderRadius: 2, marginBottom: 5 }} />)}
+    </div>
+  );
 }
 
 // ── Template Gallery ──────────────────────────────────────────────────────────
@@ -2478,7 +3093,7 @@ function TemplateGallery({ onSelect, onClose, userPlan }) {
       <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#020817", position: "sticky", top: 0 }}>
         <div>
           <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.25rem", margin: "0 0 4px" }}>Choose a Template</h2>
-          <p style={{ margin: 0, color: "rgba(255,255,255,0.4)", fontSize: "0.85rem" }}>6 free templates · 4 premium templates</p>
+          <p style={{ margin: 0, color: "rgba(255,255,255,0.4)", fontSize: "0.85rem" }}>5 free templates · 10 premium templates</p>
         </div>
         <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: "0.875rem" }}>✕ Close</button>
       </div>
@@ -2494,11 +3109,10 @@ function TemplateGallery({ onSelect, onClose, userPlan }) {
             onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
           >
             {/* Real mini template render */}
-            <div style={{ height: 200, overflow: "hidden", position: "relative", background: "#f1f5f9", cursor: "pointer" }} onClick={() => t.free || userPlan === "pro" || userPlan === "premium" ? onSelect(t.id) : onSelect("_premium_upsell")}>
-              <div style={{ transform: "scale(0.22)", transformOrigin: "top left", width: "454%", pointerEvents: "none" }}>
-                <ResumeTemplate templateId={t.id} data={PREVIEW_RESUME_DATA} />
-              </div>
-              {!t.free && (
+            <div style={{ height: 200, overflow: "hidden", position: "relative", background: "#f8fafc", cursor: "pointer" }} onClick={() => t.free || userPlan === "pro" || userPlan === "premium" ? onSelect(t.id) : onSelect("_premium_upsell")}>
+              {/* Visual layout preview - no component rendering to avoid crashes */}
+              <TemplateMockPreview template={t} />
+              {!t.free && (userPlan !== "pro" && userPlan !== "premium") && (
                 <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ background: "linear-gradient(135deg,#F59E0B,#EF4444)", color: "#fff", fontSize: "0.75rem", fontWeight: 800, padding: "6px 16px", borderRadius: 100 }}>👑 PRO TEMPLATE</div>
                 </div>
@@ -2740,7 +3354,7 @@ function ResumeBuilder({ user, resumeId, templateId: initTemplate, initialData, 
 
   return (
     <div style={{ maxWidth: 1300, display: "flex", flexDirection: isMobile ? "column" : "row", gap: "1.25rem", height: isMobile ? "auto" : "calc(100vh - 80px)" }}>
-      {showTemplates && <TemplateGallery userPlan={user?.plan} onSelect={id => { if (id === "_premium_upsell") return; setTemplateId(id); setShowTemplates(false); }} onClose={() => setShowTemplates(false)} />}
+      {showTemplates && <TemplateGallery userPlan={effectivePlan(user)} onSelect={id => { if (id === "_premium_upsell") return; setTemplateId(id); setShowTemplates(false); }} onClose={() => setShowTemplates(false)} />}
 
       {/* Left: Form */}
       <div style={{ width: isMobile ? "100%" : 420, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -2784,18 +3398,16 @@ function ResumeBuilder({ user, resumeId, templateId: initTemplate, initialData, 
         {showTemplateStrip && (
           <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "12px", overflowX: "auto" }}>
             <div style={{ display: "flex", gap: 10, minWidth: "max-content" }}>
-              {RESUME_TEMPLATES.filter(t => t.free || user?.plan === "pro" || user?.plan === "premium").map(t => (
+              {RESUME_TEMPLATES.filter(t => t.free || effectivePlan(user) === "pro" || effectivePlan(user) === "premium").map(t => (
                 <div key={t.id} onClick={() => { setTemplateId(t.id); setShowTemplateStrip(false); }}
                   style={{ width: 90, cursor: "pointer", borderRadius: 8, overflow: "hidden", border: `2px solid ${templateId === t.id ? t.accent : "rgba(255,255,255,0.1)"}`, flexShrink: 0, transition: "border-color 0.2s" }}>
-                  <div style={{ height: 72, overflow: "hidden", background: "#f1f5f9", position: "relative" }}>
-                    <div style={{ transform: "scale(0.09)", transformOrigin: "top left", width: "1111%", pointerEvents: "none" }}>
-                      <ResumeTemplate templateId={t.id} data={PREVIEW_RESUME_DATA} />
-                    </div>
+                  <div style={{ height: 72, overflow: "hidden", background: "#f8fafc", position: "relative" }}>
+                    <TemplateMockPreview template={t} />
                   </div>
                   <div style={{ padding: "4px 6px", background: templateId === t.id ? t.accent : "rgba(255,255,255,0.04)", fontSize: "0.68rem", fontWeight: 700, color: templateId === t.id ? "#fff" : "rgba(255,255,255,0.5)", textAlign: "center" }}>{t.name}</div>
                 </div>
               ))}
-              {RESUME_TEMPLATES.filter(t => !t.free && user?.plan !== "pro" && user?.plan !== "premium").length > 0 && (
+              {RESUME_TEMPLATES.filter(t => !t.free && effectivePlan(user) !== "pro" && effectivePlan(user) !== "premium").length > 0 && (
                 <div onClick={() => { setShowTemplateStrip(false); setShowTemplates(true); }}
                   style={{ width: 90, cursor: "pointer", borderRadius: 8, border: "1px dashed rgba(245,158,11,0.4)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "8px 4px", background: "rgba(245,158,11,0.05)" }}>
                   <span style={{ fontSize: "1.2rem" }}>👑</span>
@@ -2828,13 +3440,15 @@ function ResumeBuilder({ user, resumeId, templateId: initTemplate, initialData, 
 function ResumeQualityChecker({ resumes }) {
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState(null);
+  const [selectedIdx, setSelectedIdx] = useState(0);
 
   const check = async () => {
     if (!resumes.length) return;
     setChecking(true);
-    const r = resumes[0];
+    const r = resumes[selectedIdx] || resumes[0];
     const data = r.resume_data || {};
-    const text = [
+    // Support both uploaded resumes (rawText) and built resumes (structured data)
+    const text = data.rawText || [
       data.personal?.name, data.personal?.email, data.summary,
       ...(data.experience || []).map(e => `${e.title} ${e.company} ${e.description}`),
       ...(data.education || []).map(e => `${e.degree} ${e.school}`),
@@ -2842,11 +3456,20 @@ function ResumeQualityChecker({ resumes }) {
     ].filter(Boolean).join(" ");
 
     const wordCount = text.split(/\s+/).filter(Boolean).length;
-    const hasEmail = /\S+@\S+/.test(text);
-    const hasPhone = /\d{10}/.test(text);
-    const hasExperience = (data.experience || []).length > 0;
-    const hasSkills = (data.skills || []).length >= 3;
-    const hasSummary = (data.summary || "").length > 50;
+    const isUploaded = !!data.rawText;
+    const lowerText = text.toLowerCase();
+
+    const hasEmail = /[\w.+-]+@[\w-]+\.\w+/.test(text);
+    const hasPhone = /(\+91|0)?[\s-]?\d{10}|\d{3}[\s-]\d{3}[\s-]\d{4}/.test(text);
+    const hasExperience = isUploaded
+      ? /experience|worked at|employment|internship|position|role/i.test(text)
+      : (data.experience || []).length > 0;
+    const hasSkills = isUploaded
+      ? /skills|technologies|proficient|expertise/i.test(text)
+      : (data.skills || []).length >= 3;
+    const hasSummary = isUploaded
+      ? wordCount > 100
+      : (data.summary || "").length > 50;
     const ATS_KEYWORDS = ["experience", "skills", "education", "proficient", "developed", "managed", "led", "achieved", "results", "team"];
     const atsHits = ATS_KEYWORDS.filter(k => text.toLowerCase().includes(k)).length;
 
@@ -2870,13 +3493,21 @@ function ResumeQualityChecker({ resumes }) {
           <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: 3 }}>📋 Resume Quality Check</div>
           <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.78rem" }}>Instantly score your resume on length, content, and ATS-friendliness</div>
         </div>
-        {!result ? (
-          <button onClick={check} disabled={checking || !resumes.length} style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)", border: "none", color: "#fff", borderRadius: 9, padding: "9px 20px", cursor: resumes.length ? "pointer" : "not-allowed", fontWeight: 700, fontSize: "0.82rem", opacity: resumes.length ? 1 : 0.5 }}>
-            {checking ? "Checking..." : resumes.length ? "Check My Resume" : "Create a Resume First"}
-          </button>
-        ) : (
-          <button onClick={() => setResult(null)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 9, padding: "9px 18px", cursor: "pointer", fontSize: "0.8rem" }}>Re-check</button>
-        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {resumes.length > 1 && (
+            <select value={selectedIdx} onChange={e => { setSelectedIdx(+e.target.value); setResult(null); }}
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: "0.78rem", outline: "none", cursor: "pointer" }}>
+              {resumes.map((r, i) => <option key={r.id} value={i} style={{ background: "#1e293b" }}>{r.title} {r.template === "uploaded" ? "(Uploaded)" : "(Built)"}</option>)}
+            </select>
+          )}
+          {!result ? (
+            <button onClick={check} disabled={checking || !resumes.length} style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)", border: "none", color: "#fff", borderRadius: 9, padding: "9px 20px", cursor: resumes.length ? "pointer" : "not-allowed", fontWeight: 700, fontSize: "0.82rem", opacity: resumes.length ? 1 : 0.5 }}>
+              {checking ? "Checking..." : resumes.length ? "Check My Resume" : "Upload or Create a Resume First"}
+            </button>
+          ) : (
+            <button onClick={() => setResult(null)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 9, padding: "9px 18px", cursor: "pointer", fontSize: "0.8rem" }}>Re-check</button>
+          )}
+        </div>
       </div>
 
       {result && (
@@ -2918,8 +3549,14 @@ function ResumePage({ user, profile }) {
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
+  const [pendingImportData, setPendingImportData] = useState(null); // parsed data waiting for template pick
   const [builder, setBuilder] = useState(null);
   const [showPremium, setShowPremium] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [editingUpload, setEditingUpload] = useState(null);
+  const [viewingResume, setViewingResume] = useState(null); // resume object to view
+  const importInputRef = useRef(null);
   const isMobile = useMobile();
 
   const load = () => { apiGet("/resumes").then(r => { setResumes(r.success ? r.data : []); setLoading(false); }); };
@@ -2927,7 +3564,56 @@ function ResumePage({ user, profile }) {
 
   const startBuilder = (templateId, resumeId = null, data = null) => {
     setShowGallery(false);
+    setPendingImportData(null);
     setBuilder({ templateId, resumeId, data });
+  };
+
+  // Upload file → extract text → save as "uploaded" record, don't open builder yet
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true); setImportError("");
+    try {
+      let rawText = "";
+      let extractionNote = "";
+      try {
+        if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+          rawText = await extractTextFromPDF(file);
+          if (!rawText.trim()) extractionNote = "scanned_pdf";
+        } else {
+          rawText = await file.text();
+        }
+      } catch (extractErr) {
+        extractionNote = extractErr.message;
+      }
+      const res = await apiPost("/resumes", {
+        title: file.name.replace(/\.[^.]+$/, ""),
+        template: "uploaded",
+        resume_data: { rawText: rawText || "", fileName: file.name, uploaded: true, extractionNote },
+      });
+      if (!res.success) throw new Error("Could not save resume. Please try again.");
+      load();
+    } catch (err) {
+      setImportError(err.message || "Upload failed. Please try again.");
+    }
+    setImporting(false);
+    e.target.value = "";
+  };
+
+  // "Edit in Builder" on an uploaded resume → parse → pick template → builder
+  const handleEditUpload = async (resume) => {
+    setEditingUpload(resume.id); setImportError("");
+    try {
+      const rawText = resume.resume_data?.rawText || "";
+      if (!rawText) throw new Error("No text found in this resume.");
+      const data = await parseResumeWithAI(rawText);
+      if (!data) throw new Error("Could not parse resume data.");
+      setPendingImportData(data);
+      setShowGallery(true); // let user pick template first
+    } catch (err) {
+      setImportError(err.message || "Parse failed. Please try again.");
+    }
+    setEditingUpload(null);
   };
 
   const deleteResume = async (id) => {
@@ -2951,70 +3637,207 @@ function ResumePage({ user, profile }) {
     />
   );
 
+  const uploadedResumes = resumes.filter(r => r.template === "uploaded");
+  const builtResumes = resumes.filter(r => r.template !== "uploaded");
+
   return (
     <div style={{ maxWidth: 1100 }}>
-      {showGallery && <TemplateGallery userPlan={profile?.plan} onSelect={id => { if (id === "_premium_upsell") { setShowGallery(false); setShowPremium(true); } else startBuilder(id); }} onClose={() => setShowGallery(false)} />}
-      {showPremium && <PremiumModal onClose={() => setShowPremium(false)} onUpgrade={() => { setShowPremium(false); }} />}
+      {/* Uploaded resume viewer modal */}
+      {viewingResume && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "2rem 1rem" }}
+          onClick={e => e.target === e.currentTarget && setViewingResume(null)}>
+          <div style={{ background: "#0F172A", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, width: "100%", maxWidth: 780, padding: "1.5rem" }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+              <div>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem" }}>📄 {viewingResume.title}</div>
+                <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{viewingResume.resume_data?.fileName} · Uploaded {new Date(viewingResume.updated_at).toLocaleDateString()}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => { setViewingResume(null); handleEditUpload(viewingResume); }}
+                  style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: "0.82rem" }}
+                >
+                  ✏ Edit in Builder
+                </button>
+                <button onClick={() => setViewingResume(null)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: "0.82rem" }}>✕ Close</button>
+              </div>
+            </div>
+            {/* Resume text content */}
+            {viewingResume.resume_data?.rawText ? (
+              <div style={{ background: "#fff", borderRadius: 10, padding: "2rem 2.5rem", color: "#111", fontFamily: "Georgia, serif", fontSize: "13px", lineHeight: 1.7, maxHeight: "70vh", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                {viewingResume.resume_data.rawText}
+              </div>
+            ) : (
+              <div style={{ background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: 10, padding: "2.5rem", textAlign: "center" }}>
+                <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🖼</div>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                  {viewingResume.resume_data?.extractionNote === "scanned_pdf"
+                    ? "This appears to be a scanned PDF — text could not be extracted."
+                    : "No text content was extracted from this file."}
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.85rem", marginBottom: "1.25rem" }}>
+                  Please delete this and re-upload a text-based PDF, or click "Edit in Builder" to manually fill in your details.
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                  <button onClick={() => { setViewingResume(null); deleteResume(viewingResume.id); }} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#EF4444", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: 600 }}>🗑 Delete &amp; Re-upload</button>
+                  <button onClick={() => { setViewingResume(null); handleEditUpload(viewingResume); }} style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: "0.85rem" }}>✏ Fill Manually in Builder</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+      {showGallery && (
+        <TemplateGallery
+          userPlan={effectivePlan(profile)}
+          onSelect={id => {
+            if (id === "_premium_upsell") { setShowGallery(false); setShowPremium(true); }
+            else { setShowGallery(false); startBuilder(id, null, pendingImportData || null); }
+          }}
+          onClose={() => { setShowGallery(false); setPendingImportData(null); }}
+        />
+      )}
+      {showPremium && <PremiumModal onClose={() => setShowPremium(false)} onUpgrade={() => setShowPremium(false)} />}
+
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.1rem", margin: "0 0 4px" }}>My Resumes</h2>
           <p style={{ margin: 0, color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>{resumes.length} resume{resumes.length !== 1 ? "s" : ""} saved</p>
         </div>
-        <button onClick={() => setShowGallery(true)} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontWeight: 700, fontSize: "0.875rem" }}>+ Create New Resume</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input ref={importInputRef} type="file" accept=".pdf,.txt,.doc,.docx" style={{ display: "none" }} onChange={handleImport} />
+          <button
+            onClick={() => { setImportError(""); importInputRef.current?.click(); }}
+            disabled={importing}
+            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 10, padding: "10px 18px", cursor: importing ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 6 }}
+          >
+            {importing ? <><Spinner /> Uploading…</> : "⬆ Upload Resume"}
+          </button>
+          <button onClick={() => { setPendingImportData(null); setShowGallery(true); }} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontWeight: 700, fontSize: "0.875rem" }}>+ Create New</button>
+        </div>
       </div>
+      {importError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: "1rem", fontSize: "0.85rem" }}>⚠ {importError}</div>}
 
       {/* Template highlight bar */}
       <div style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.15)", borderRadius: 12, padding: "1rem 1.25rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-          {[["📄", "6 Free Templates"], ["👑", "4 Premium Templates"], ["🤖", "AI Resume Builder"], ["⬇", "PDF Download"]].map(([icon, text]) => (
+          {[["📄", "8 Free Templates"], ["👑", "4 Premium Templates"], ["🤖", "AI Resume Builder"], ["⬇", "PDF Download"]].map(([icon, text]) => (
             <span key={text} style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.6)", display: "flex", alignItems: "center", gap: 6 }}><span>{icon}</span>{text}</span>
           ))}
         </div>
-        <button onClick={() => setShowGallery(true)} style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60A5FA", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}>Browse Templates →</button>
+        <button onClick={() => { setPendingImportData(null); setViewingResume(null); setShowGallery(true); }} style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60A5FA", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}>Browse Templates →</button>
       </div>
 
-      {/* Resume Quality Checker */}
       <ResumeQualityChecker resumes={resumes} />
 
       {loading ? (
         <div style={{ textAlign: "center", padding: "4rem", color: "rgba(255,255,255,0.4)" }}><Spinner /> Loading...</div>
-      ) : resumes.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "4rem 2rem", background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 16 }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📄</div>
-          <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, margin: "0 0 8px" }}>No resumes yet</h3>
-          <p style={{ color: "rgba(255,255,255,0.4)", margin: "0 0 1.5rem", fontSize: "0.9rem" }}>Create your first professional resume in minutes</p>
-          <button onClick={() => setShowGallery(true)} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontWeight: 700, fontSize: "0.95rem" }}>Build Your Resume</button>
-        </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
-          {resumes.map(r => {
-            const tmpl = RESUME_TEMPLATES.find(t => t.id === r.template) || RESUME_TEMPLATES[0];
-            return (
-              <div key={r.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, overflow: "hidden" }}>
-                <div style={{ height: 100, background: `linear-gradient(135deg, ${tmpl.accent}22, ${tmpl.accent}55)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ width: 56, height: 72, background: "#fff", borderRadius: 4, boxShadow: "0 2px 12px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", padding: 6, gap: 3 }}>
-                    <div style={{ height: 6, background: tmpl.accent, borderRadius: 2 }} />
-                    <div style={{ height: 2, background: "#e5e7eb", borderRadius: 2, width: "70%" }} />
-                    <div style={{ height: 2, background: "#f3f4f6", borderRadius: 2 }} />
-                    <div style={{ height: 2, background: "#f3f4f6", borderRadius: 2, width: "85%" }} />
-                  </div>
-                </div>
-                <div style={{ padding: "0.875rem 1rem" }}>
-                  <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: 3 }}>{r.title}</div>
-                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>
-                    {tmpl.name} · Updated {new Date(r.updated_at).toLocaleDateString()}
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => startBuilder(r.template, r.id, r.resume_data)} style={{ flex: 1, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 7, padding: "7px", cursor: "pointer", fontWeight: 600, fontSize: "0.78rem" }}>✏ Edit</button>
-                    <button onClick={() => duplicateResume(r)} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", borderRadius: 7, padding: "7px 10px", cursor: "pointer", fontSize: "0.75rem" }} title="Duplicate">⧉</button>
-                    <button onClick={() => deleteResume(r.id)} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444", borderRadius: 7, padding: "7px 10px", cursor: "pointer", fontSize: "0.75rem" }} title="Delete">🗑</button>
-                  </div>
-                </div>
+        <>
+          {/* Uploaded Resumes Section */}
+          {uploadedResumes.length > 0 && (
+            <div style={{ marginBottom: "2rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1rem" }}>
+                <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Uploaded Resumes</span>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
               </div>
-            );
-          })}
-        </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
+                {uploadedResumes.map(r => (
+                  <div key={r.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, overflow: "hidden" }}>
+                    <div
+                      onClick={() => setViewingResume(r)}
+                      style={{ height: 90, background: "linear-gradient(135deg,rgba(99,102,241,0.15),rgba(99,102,241,0.3))", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: "2.2rem" }}>📄</div>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)" }}>Uploaded file</div>
+                        <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>{r.resume_data?.fileName || "Resume"}</div>
+                      </div>
+                    </div>
+                    <div style={{ padding: "0.875rem 1rem" }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: 3 }}>{r.title}</div>
+                      <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>
+                        Uploaded {new Date(r.updated_at).toLocaleDateString()}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => setViewingResume(r)}
+                          style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", borderRadius: 7, padding: "7px", cursor: "pointer", fontWeight: 600, fontSize: "0.78rem" }}
+                        >
+                          👁 View
+                        </button>
+                        <button
+                          onClick={() => handleEditUpload(r)}
+                          disabled={editingUpload === r.id}
+                          style={{ flex: 1, background: "linear-gradient(135deg,#6366F1,#8B5CF6)", border: "none", color: "#fff", borderRadius: 7, padding: "7px", cursor: editingUpload === r.id ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "0.78rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                        >
+                          {editingUpload === r.id ? <><Spinner /> Parsing…</> : "✏ Edit"}
+                        </button>
+                        <button onClick={() => deleteResume(r.id)} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444", borderRadius: 7, padding: "7px 10px", cursor: "pointer", fontSize: "0.75rem" }} title="Delete">🗑</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Built Resumes Section */}
+          {builtResumes.length > 0 && (
+            <div>
+              {uploadedResumes.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1rem" }}>
+                  <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Built Resumes</span>
+                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
+                {builtResumes.map(r => {
+                  const tmpl = RESUME_TEMPLATES.find(t => t.id === r.template) || RESUME_TEMPLATES[0];
+                  return (
+                    <div key={r.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, overflow: "hidden" }}>
+                      <div style={{ height: 100, background: `linear-gradient(135deg, ${tmpl.accent}22, ${tmpl.accent}55)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <div style={{ width: 56, height: 72, background: "#fff", borderRadius: 4, boxShadow: "0 2px 12px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", padding: 6, gap: 3 }}>
+                          <div style={{ height: 6, background: tmpl.accent, borderRadius: 2 }} />
+                          <div style={{ height: 2, background: "#e5e7eb", borderRadius: 2, width: "70%" }} />
+                          <div style={{ height: 2, background: "#f3f4f6", borderRadius: 2 }} />
+                          <div style={{ height: 2, background: "#f3f4f6", borderRadius: 2, width: "85%" }} />
+                        </div>
+                      </div>
+                      <div style={{ padding: "0.875rem 1rem" }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: 3 }}>{r.title}</div>
+                        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>
+                          {tmpl.name} · Updated {new Date(r.updated_at).toLocaleDateString()}
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => startBuilder(r.template, r.id, r.resume_data)} style={{ flex: 1, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 7, padding: "7px", cursor: "pointer", fontWeight: 600, fontSize: "0.78rem" }}>✏ Edit</button>
+                          <button onClick={() => duplicateResume(r)} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", borderRadius: 7, padding: "7px 10px", cursor: "pointer", fontSize: "0.75rem" }} title="Duplicate">⧉</button>
+                          <button onClick={() => deleteResume(r.id)} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444", borderRadius: 7, padding: "7px 10px", cursor: "pointer", fontSize: "0.75rem" }} title="Delete">🗑</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {resumes.length === 0 && (
+            <div style={{ textAlign: "center", padding: "4rem 2rem", background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 16 }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📄</div>
+              <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, margin: "0 0 8px" }}>No resumes yet</h3>
+              <p style={{ color: "rgba(255,255,255,0.4)", margin: "0 0 1.5rem", fontSize: "0.9rem" }}>Upload an existing resume or build one from a template</p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button onClick={() => importInputRef.current?.click()} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 10, padding: "12px 24px", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" }}>⬆ Upload Resume</button>
+                <button onClick={() => setShowGallery(true)} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontWeight: 700, fontSize: "0.95rem" }}>Build from Template</button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -3035,9 +3858,18 @@ function InterviewPage() {
   ];
 
   const generateAnswer = async (q, i) => {
+    if (!OPENAI_KEY) { setAnswers(prev => ({ ...prev, [i]: "⚠ OpenAI key not configured. Add VITE_OPENAI_KEY in Vercel environment variables to enable AI answers." })); return; }
     setGeneratingAnswer(i);
-    const answer = await chatWithAI([{ role: "user", content: `Give a strong interview answer for: "${q.q}". Use STAR method if behavioral. Be concise (150 words max).` }]);
-    setAnswers(prev => ({ ...prev, [i]: answer }));
+    try {
+      const answer = await chatWithAI([{ role: "user", content: `Give a strong interview answer for: "${q.q}". Use STAR method if behavioral. Be concise (150 words max).` }]);
+      setAnswers(prev => ({ ...prev, [i]: answer || "No response received. Please try again." }));
+    } catch (e) {
+      const msg = e.message || "";
+      const friendly = msg.includes("quota") || msg.includes("billing") || msg.includes("429")
+        ? "⚠ AI service is temporarily unavailable. Our team has been notified — please try again later."
+        : "⚠ Failed to generate answer. Please try again.";
+      setAnswers(prev => ({ ...prev, [i]: friendly }));
+    }
     setGeneratingAnswer(null);
   };
 
@@ -3136,15 +3968,27 @@ function SettingsPage({ user, profile, onLogout }) {
   const [payingPlan, setPayingPlan] = useState(null);
   const [paySuccess, setPaySuccess] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
   const [name, setName] = useState(profile?.full_name || "");
+  const [phone, setPhone] = useState(profile?.phone || "");
+  const [location, setLocation] = useState(profile?.location || "");
+  const [jobTitle, setJobTitle] = useState(profile?.desired_job_title || "");
   const [email] = useState(user?.email || "");
   const isMobile = useMobile();
 
   const saveProfile = async () => {
-    setSaving(true);
-    await supabase.from("profiles").upsert({ id: user.id, full_name: name, updated_at: new Date().toISOString() });
+    setSaving(true); setSaveMsg("");
+    const { error } = await supabase.from("profiles").upsert({
+      id: user.id,
+      full_name: name,
+      phone,
+      location,
+      desired_job_title: jobTitle,
+      updated_at: new Date().toISOString(),
+    });
     setSaving(false);
-    alert("Profile saved!");
+    setSaveMsg(error ? "❌ Save failed: " + error.message : "✅ Profile saved!");
+    setTimeout(() => setSaveMsg(""), 3000);
   };
 
   const handlePay = async (plan) => {
@@ -3166,18 +4010,26 @@ function SettingsPage({ user, profile, onLogout }) {
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem", marginBottom: "1.25rem" }}>
         <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", margin: "0 0 1.25rem" }}>Profile</h3>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-          <div>
-            <label style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "block", marginBottom: 6 }}>FULL NAME</label>
-            <input value={name} onChange={e => setName(e.target.value)} style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.9rem", outline: "none" }} />
-          </div>
-          <div>
-            <label style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "block", marginBottom: 6 }}>EMAIL</label>
-            <input value={email} disabled style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 14px", color: "rgba(255,255,255,0.4)", fontFamily: "Inter,sans-serif", fontSize: "0.9rem", outline: "none" }} />
-          </div>
+          {[
+            { label: "FULL NAME", value: name, setter: setName, disabled: false },
+            { label: "EMAIL", value: email, setter: null, disabled: true },
+            { label: "PHONE", value: phone, setter: setPhone, disabled: false },
+            { label: "LOCATION", value: location, setter: setLocation, disabled: false },
+            { label: "DESIRED JOB TITLE", value: jobTitle, setter: setJobTitle, disabled: false },
+          ].map(({ label, value, setter, disabled }) => (
+            <div key={label}>
+              <label style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "block", marginBottom: 6 }}>{label}</label>
+              <input value={value} onChange={setter ? e => setter(e.target.value) : undefined} disabled={disabled}
+                style={{ width: "100%", boxSizing: "border-box", background: disabled ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)", border: `1px solid ${disabled ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "10px 14px", color: disabled ? "rgba(255,255,255,0.4)" : "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.9rem", outline: "none" }} />
+            </div>
+          ))}
         </div>
-        <button onClick={saveProfile} disabled={saving} style={{ marginTop: "1rem", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "10px 24px", cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
-          {saving && <Spinner />}Save Changes
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: "1rem" }}>
+          <button onClick={saveProfile} disabled={saving} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "10px 24px", cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+            {saving && <Spinner />}Save Changes
+          </button>
+          {saveMsg && <span style={{ fontSize: "0.85rem", color: saveMsg.startsWith("✅") ? "#10B981" : "#EF4444" }}>{saveMsg}</span>}
+        </div>
       </div>
 
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem", marginBottom: "1.25rem" }}>
@@ -3207,72 +4059,244 @@ function SettingsPage({ user, profile, onLogout }) {
 }
 
 // ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
-function AdminPage() {
+function AdminPage({ onViewAs }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState("overview");
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userApps, setUserApps] = useState([]);
+  const [userAppsLoading, setUserAppsLoading] = useState(false);
+  const [updatingPlan, setUpdatingPlan] = useState(false);
   const isMobile = useMobile();
 
   useEffect(() => {
-    apiGet("/admin/dashboard").then(res => {
+    apiGet("/admin/users?dashboard=true").then(res => {
       if (res.success) setData(res.data);
       else setError(res.message || "Access denied");
       setLoading(false);
     });
   }, []);
 
+  const [usersError, setUsersError] = useState("");
+  useEffect(() => {
+    if (tab === "users") {
+      setUsersLoading(true);
+      setUsersError("");
+      apiGet("/admin/users").then(res => {
+        if (res.success) {
+          setUsers(res.data || []);
+        } else {
+          setUsersError(res.message || "Failed to load users");
+        }
+        setUsersLoading(false);
+      });
+    }
+  }, [tab]);
+
+  const loadUserApps = async (userId) => {
+    setUserAppsLoading(true);
+    const res = await apiGet(`/admin/users?id=${userId}&action=applications`);
+    setUserApps(res.success ? (res.data || []) : []);
+    setUserAppsLoading(false);
+  };
+
+  const updateUserPlan = async (userId, newPlan) => {
+    setUpdatingPlan(true);
+    const res = await apiPut(`/admin/users?id=${userId}`, { plan: newPlan });
+    if (res.success) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, plan: newPlan } : u));
+      if (selectedUser?.id === userId) setSelectedUser(prev => ({ ...prev, plan: newPlan }));
+    }
+    setUpdatingPlan(false);
+  };
+
+  const filteredUsers = users.filter(u =>
+    !search || u.email?.toLowerCase().includes(search.toLowerCase()) || u.full_name?.toLowerCase().includes(search.toLowerCase())
+  );
+
   if (loading) return <div style={{ textAlign: "center", padding: "4rem", color: "rgba(255,255,255,0.4)" }}><Spinner /><div style={{ marginTop: 12 }}>Loading admin data...</div></div>;
   if (error) return <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 14, padding: "2rem", textAlign: "center", color: "#FCA5A5" }}>🔒 {error}<br /><span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.4)", marginTop: 8, display: "block" }}>Set role = 'admin' in your Supabase profiles table to access this.</span></div>;
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: "0.75rem", marginBottom: "1.5rem" }}>
-        {[
-          ["👥", data.users.total, "Total Users", "#3B82F6"],
-          ["💎", data.users.pro + data.users.premium, "Paid Users", "#8B5CF6"],
-          ["📤", data.applications.total, "Total Applications", "#10B981"],
-          ["💰", `₹${data.revenue.total.toLocaleString()}`, "Revenue (Active)", "#F59E0B"],
-        ].map(([icon, val, label, color]) => (
-          <div key={label} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1.25rem" }}>
-            <div style={{ fontSize: "1.5rem", marginBottom: 8 }}>{icon}</div>
-            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.8rem", color }}>{val}</div>
-            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.78rem", marginTop: 4 }}>{label}</div>
-          </div>
+      {/* Tab Bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: "1.5rem", borderBottom: "1px solid rgba(255,255,255,0.07)", paddingBottom: "1rem" }}>
+        {[["overview", "📊 Overview"], ["users", "👥 Users"]].map(([key, label]) => (
+          <button key={key} onClick={() => { setTab(key); setSelectedUser(null); }} style={{ background: tab === key ? "rgba(59,130,246,0.15)" : "transparent", border: `1px solid ${tab === key ? "rgba(59,130,246,0.4)" : "transparent"}`, color: tab === key ? "#60A5FA" : "rgba(255,255,255,0.5)", borderRadius: 10, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: "0.85rem" }}>
+            {label}
+          </button>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
-        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem" }}>
-          <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", margin: "0 0 1.25rem" }}>Plan Breakdown</h3>
-          {[["Free", data.users.free, "#6B7280"], ["Pro", data.users.pro, "#3B82F6"], ["Premium", data.users.premium, "#8B5CF6"]].map(([plan, count, color]) => (
-            <div key={plan} style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.6)" }}>{plan}</span>
-                <span style={{ fontSize: "0.85rem", fontWeight: 600, color }}>{count} users</span>
+      {/* ── OVERVIEW TAB ── */}
+      {tab === "overview" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: "0.75rem", marginBottom: "1.5rem" }}>
+            {[
+              ["👥", data.users.total, "Total Users", "#3B82F6"],
+              ["💎", data.users.pro + data.users.premium, "Paid Users", "#8B5CF6"],
+              ["📤", data.applications.total, "Total Applications", "#10B981"],
+              ["💰", `₹${data.revenue.total.toLocaleString()}`, "Revenue (Active)", "#F59E0B"],
+            ].map(([icon, val, label, color]) => (
+              <div key={label} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1.25rem" }}>
+                <div style={{ fontSize: "1.5rem", marginBottom: 8 }}>{icon}</div>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.8rem", color }}>{val}</div>
+                <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.78rem", marginTop: 4 }}>{label}</div>
               </div>
-              <div style={{ height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3 }}>
-                <div style={{ width: `${data.users.total ? (count / data.users.total) * 100 : 0}%`, height: "100%", background: color, borderRadius: 3 }} />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem" }}>
-          <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", margin: "0 0 1.25rem" }}>Recent Signups</h3>
-          {data.recentUsers?.slice(0, 5).map((u, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "0.5rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-              <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.75rem", flexShrink: 0 }}>
-                {(u.full_name || u.email || "?")[0].toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.full_name || u.email}</div>
-                <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem" }}>{new Date(u.created_at).toLocaleDateString()}</div>
-              </div>
-              <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 100, background: u.plan === "premium" ? "rgba(139,92,246,0.15)" : u.plan === "pro" ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.06)", color: u.plan === "premium" ? "#A78BFA" : u.plan === "pro" ? "#60A5FA" : "rgba(255,255,255,0.4)", textTransform: "capitalize" }}>{u.plan || "free"}</span>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "1rem" }}>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem" }}>
+              <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", margin: "0 0 1.25rem" }}>Plan Breakdown</h3>
+              {[["Free", data.users.free, "#6B7280"], ["Pro", data.users.pro, "#3B82F6"], ["Premium", data.users.premium, "#8B5CF6"]].map(([plan, count, color]) => (
+                <div key={plan} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.6)" }}>{plan}</span>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 600, color }}>{count} users</span>
+                  </div>
+                  <div style={{ height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3 }}>
+                    <div style={{ width: `${data.users.total ? (count / data.users.total) * 100 : 0}%`, height: "100%", background: color, borderRadius: 3 }} />
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem" }}>
+              <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", margin: "0 0 1.25rem" }}>Recent Signups</h3>
+              {data.recentUsers?.slice(0, 5).map((u, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "0.5rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.75rem", flexShrink: 0 }}>
+                    {(u.full_name || u.email || "?")[0].toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.full_name || u.email}</div>
+                    <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem" }}>{new Date(u.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 100, background: (PLAN_COLORS[u.plan || "free"] || PLAN_COLORS.free)[0], color: (PLAN_COLORS[u.plan || "free"] || PLAN_COLORS.free)[1], textTransform: "capitalize" }}>{u.plan || "free"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── USERS TAB ── */}
+      {tab === "users" && !selectedUser && (
+        <>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by email or name..." style={{ width: "100%", marginBottom: "1rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }} />
+
+          {usersError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "12px 16px", color: "#FCA5A5", marginBottom: "1rem", fontSize: "0.85rem" }}>⚠ {usersError}</div>}
+          {usersLoading ? (
+            <div style={{ textAlign: "center", padding: "3rem", color: "rgba(255,255,255,0.4)" }}><Spinner /> Loading users...</div>
+          ) : (
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 2fr 1fr 1fr 80px", padding: "0.75rem 1.25rem", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                {(isMobile ? ["User", "Plan"] : ["Name / Email", "Joined", "Plan", "Applications", ""]).map(h => (
+                  <span key={h} style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.07em" }}>{h.toUpperCase()}</span>
+                ))}
+              </div>
+              {filteredUsers.length === 0 && (
+                <div style={{ textAlign: "center", padding: "2rem", color: "rgba(255,255,255,0.3)", fontSize: "0.85rem" }}>No users found</div>
+              )}
+              {filteredUsers.map((u, i) => (
+                <div key={u.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 2fr 1fr 1fr 80px", padding: "0.875rem 1.25rem", borderBottom: i < filteredUsers.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.75rem", flexShrink: 0 }}>
+                      {(u.full_name || u.email || "?")[0].toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.full_name || "—"}</div>
+                      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                    </div>
+                  </div>
+                  {!isMobile && <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.8rem" }}>{u.created_at ? new Date(u.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>}
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "3px 10px", borderRadius: 100, background: (PLAN_COLORS[u.plan || "free"] || PLAN_COLORS.free)[0], color: (PLAN_COLORS[u.plan || "free"] || PLAN_COLORS.free)[1], textTransform: "capitalize", display: "inline-block" }}>{u.plan || "free"}</span>
+                  {!isMobile && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.82rem" }}>{u.application_count ?? "—"}</span>}
+                  <button onClick={() => { setSelectedUser(u); loadUserApps(u.id); }} style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)", color: "#60A5FA", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 600 }}>View</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── USER DETAIL VIEW ── */}
+      {tab === "users" && selectedUser && (
+        <div>
+          <div style={{ display: "flex", gap: 10, marginBottom: "1.25rem", flexWrap: "wrap" }}>
+            <button onClick={() => { setSelectedUser(null); setUserApps([]); }} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: "0.82rem" }}>
+              ← Back to Users
+            </button>
+            <button onClick={() => onViewAs && onViewAs({ id: selectedUser.id, email: selectedUser.email, profile: selectedUser })} style={{ background: "linear-gradient(135deg,#F59E0B,#D97706)", border: "none", color: "#fff", borderRadius: 8, padding: "7px 18px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+              👁 View Their Dashboard
+            </button>
+          </div>
+
+          {/* User Profile Card */}
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1.5rem", marginBottom: "1.25rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: "1.25rem", flexWrap: "wrap" }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.3rem", flexShrink: 0 }}>
+                {(selectedUser.full_name || selectedUser.email || "?")[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.1rem" }}>{selectedUser.full_name || "No name"}</div>
+                <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.85rem" }}>{selectedUser.email}</div>
+                <div style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginTop: 2 }}>Joined {selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "—"}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>Plan:</span>
+                <select disabled={updatingPlan} value={selectedUser.plan || "free"} onChange={e => updateUserPlan(selectedUser.id, e.target.value)}
+                  style={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: "0.82rem", cursor: "pointer", outline: "none" }}>
+                  {["free","pro","premium","enterprise"].map(p => <option key={p} value={p} style={{ textTransform: "capitalize" }}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                </select>
+                {updatingPlan && <Spinner />}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+              {[
+                ["📧", "Email", selectedUser.email || "—"],
+                ["📱", "Phone", selectedUser.phone || "—"],
+                ["🏷️", "Role", selectedUser.role || "user"],
+              ].map(([icon, label, val]) => (
+                <div key={label} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "0.75rem 1rem" }}>
+                  <div style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>{icon} {label}</div>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* User Applications */}
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "1.5rem" }}>
+            <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", margin: "0 0 1rem" }}>Job Applications ({userApps.length})</h3>
+            {userAppsLoading ? (
+              <div style={{ textAlign: "center", padding: "2rem", color: "rgba(255,255,255,0.4)" }}><Spinner /></div>
+            ) : userApps.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "1.5rem", color: "rgba(255,255,255,0.3)", fontSize: "0.85rem" }}>No applications yet</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {userApps.map((a, i) => (
+                  <div key={a.id || i} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr", alignItems: "center", padding: "0.75rem 1rem", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 10, gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>{a.company}</div>
+                      <div style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.75rem" }}>{a.position}</div>
+                    </div>
+                    <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.78rem" }}>{a.applied_at ? new Date(a.applied_at).toLocaleDateString("en-IN") : "—"}</span>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "3px 10px", borderRadius: 100, background: (STATUS_COLORS[a.status] || "#6B7280") + "22", color: STATUS_COLORS[a.status] || "#6B7280", textAlign: "center" }}>{a.status}</span>
+                    <span style={{ color: "#3B82F6", fontSize: "0.82rem", fontWeight: 600, textAlign: "right" }}>{a.match_score ? `${a.match_score}%` : "—"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -3327,18 +4351,265 @@ function ResetPasswordScreen({ onDone }) {
   );
 }
 
+// ─── POLICY PAGES ─────────────────────────────────────────────────────────────
+const POLICY_STYLE = {
+  page: { minHeight: "100vh", background: "#020817", color: "#e2e8f0", fontFamily: "Inter,sans-serif" },
+  header: { background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "1rem 5%", display: "flex", alignItems: "center", gap: 16 },
+  body: { maxWidth: 860, margin: "0 auto", padding: "3rem 5% 6rem" },
+  h1: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", margin: "0 0 0.25rem", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" },
+  date: { color: "rgba(255,255,255,0.35)", fontSize: "0.82rem", marginBottom: "2.5rem" },
+  h2: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.15rem", color: "#fff", margin: "2.5rem 0 0.75rem", paddingBottom: "0.5rem", borderBottom: "1px solid rgba(255,255,255,0.07)" },
+  p: { color: "rgba(255,255,255,0.7)", lineHeight: 1.8, margin: "0 0 1rem", fontSize: "0.94rem" },
+  li: { color: "rgba(255,255,255,0.7)", lineHeight: 1.8, marginBottom: "0.4rem", fontSize: "0.94rem" },
+  ul: { paddingLeft: "1.4rem", margin: "0 0 1rem" },
+  contact: { background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 12, padding: "1.25rem 1.5rem", marginTop: "2.5rem" },
+};
+
+function PolicySection({ title, children }) {
+  return (<><h2 style={POLICY_STYLE.h2}>{title}</h2>{children}</>);
+}
+
+function PolicyPage({ title, onBack, content: Content }) {
+  return (
+    <div style={POLICY_STYLE.page}>
+      <div style={POLICY_STYLE.header}>
+        <button onClick={onBack} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 6 }}>← Back</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 30, height: 30, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "0.85rem", color: "#fff" }}>A</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, color: "#fff" }}>AutoApply AI</span>
+        </div>
+      </div>
+      <div style={POLICY_STYLE.body}>
+        <h1 style={POLICY_STYLE.h1}>{title}</h1>
+        <p style={POLICY_STYLE.date}>Last updated: June 2026 · Effective immediately</p>
+        <Content />
+      </div>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');`}</style>
+    </div>
+  );
+}
+
+const S = POLICY_STYLE;
+
+function TERMS_CONTENT() {
+  return (<>
+    <PolicySection title="1. Acceptance of Terms">
+      <p style={S.p}>By accessing or using AutoApply AI ("the Platform", "we", "us", or "our"), you agree to be bound by these Terms & Conditions. If you do not agree, please do not use our services. These terms apply to all users, including visitors, registered users, and paying subscribers.</p>
+    </PolicySection>
+    <PolicySection title="2. Description of Service">
+      <p style={S.p}>AutoApply AI is an AI-powered job application automation platform designed for job seekers in India. Our services include:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>AI-generated resumes and cover letters</li>
+        <li style={S.li}>Automated job application submission across multiple platforms</li>
+        <li style={S.li}>Application tracking and management</li>
+        <li style={S.li}>Interview preparation tools</li>
+        <li style={S.li}>AI Career Assistant</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="3. User Accounts">
+      <p style={S.p}>You must be at least 18 years old to create an account. You are responsible for maintaining the confidentiality of your login credentials and for all activities that occur under your account. You agree to provide accurate and complete information during registration and to keep this information up to date.</p>
+    </PolicySection>
+    <PolicySection title="4. Subscription Plans">
+      <p style={S.p}>AutoApply AI offers Free, Pro (₹599/month), and Premium (₹999/month) subscription plans. Paid subscriptions are billed monthly. By subscribing, you authorise us to charge the applicable fees to your payment method via Razorpay. All prices are in Indian Rupees (INR) and inclusive of applicable taxes.</p>
+    </PolicySection>
+    <PolicySection title="5. Acceptable Use">
+      <p style={S.p}>You agree not to:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>Use the platform for any unlawful purpose or to violate any regulations</li>
+        <li style={S.li}>Submit false information to employers or job portals</li>
+        <li style={S.li}>Attempt to reverse-engineer, scrape, or exploit the platform</li>
+        <li style={S.li}>Share your account credentials with third parties</li>
+        <li style={S.li}>Use automated tools to access the platform beyond our provided APIs</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="6. Intellectual Property">
+      <p style={S.p}>All content, features, and functionality of AutoApply AI — including AI models, UI design, algorithms, and branding — are owned by AutoApply AI and protected by applicable intellectual property laws. You retain ownership of the personal data and resume content you upload.</p>
+    </PolicySection>
+    <PolicySection title="7. Disclaimer of Warranties">
+      <p style={S.p}>AutoApply AI is provided "as is" without warranties of any kind. We do not guarantee job placement, interview calls, or specific outcomes from using our platform. AI-generated content should be reviewed by you before submission. We are not responsible for decisions made by employers.</p>
+    </PolicySection>
+    <PolicySection title="8. Limitation of Liability">
+      <p style={S.p}>To the maximum extent permitted by Indian law, AutoApply AI shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the platform. Our total liability shall not exceed the amount paid by you in the three months preceding the claim.</p>
+    </PolicySection>
+    <PolicySection title="9. Governing Law">
+      <p style={S.p}>These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of the courts in Bengaluru, Karnataka, India.</p>
+    </PolicySection>
+    <PolicySection title="10. Changes to Terms">
+      <p style={S.p}>We may update these Terms from time to time. Continued use of the platform after changes constitutes acceptance of the new Terms. We will notify you of material changes via email or an in-app notice.</p>
+    </PolicySection>
+    <div style={S.contact}><p style={{ ...S.p, margin: 0 }}>Questions about these Terms? Contact us at <strong style={{ color: "#93C5FD" }}>info@machmiles.com</strong></p></div>
+  </>);
+}
+
+function PRIVACY_CONTENT() {
+  return (<>
+    <PolicySection title="1. Information We Collect">
+      <p style={S.p}>We collect the following information when you use AutoApply AI:</p>
+      <ul style={S.ul}>
+        <li style={S.li}><strong style={{ color: "#fff" }}>Account Data:</strong> Name, email address, phone number, and location</li>
+        <li style={S.li}><strong style={{ color: "#fff" }}>Resume Data:</strong> Work history, education, skills, and other professional information you provide</li>
+        <li style={S.li}><strong style={{ color: "#fff" }}>Usage Data:</strong> Pages visited, features used, job searches performed, and application activity</li>
+        <li style={S.li}><strong style={{ color: "#fff" }}>Payment Data:</strong> Transaction records via Razorpay (we do not store card details)</li>
+        <li style={S.li}><strong style={{ color: "#fff" }}>Device Data:</strong> IP address, browser type, and operating system</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="2. How We Use Your Information">
+      <p style={S.p}>We use your data to:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>Provide, operate, and improve the AutoApply AI platform</li>
+        <li style={S.li}>Generate personalised resumes, cover letters, and job recommendations</li>
+        <li style={S.li}>Process subscription payments securely</li>
+        <li style={S.li}>Send important service updates and notifications</li>
+        <li style={S.li}>Prevent fraud and ensure platform security</li>
+        <li style={S.li}>Comply with legal obligations</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="3. Data Sharing">
+      <p style={S.p}>We do not sell your personal data. We may share your data with:</p>
+      <ul style={S.ul}>
+        <li style={S.li}><strong style={{ color: "#fff" }}>Service Providers:</strong> Supabase (database), OpenAI (AI features), Razorpay (payments), Vercel (hosting)</li>
+        <li style={S.li}><strong style={{ color: "#fff" }}>Legal Authorities:</strong> When required by law or to protect our rights</li>
+      </ul>
+      <p style={S.p}>All third-party providers are contractually required to protect your data and use it only for the stated purposes.</p>
+    </PolicySection>
+    <PolicySection title="4. Data Retention">
+      <p style={S.p}>We retain your data for as long as your account is active. If you delete your account, we will delete your personal data within 30 days, except where retention is required by law.</p>
+    </PolicySection>
+    <PolicySection title="5. Your Rights">
+      <p style={S.p}>Under applicable Indian privacy laws, you have the right to:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>Access the personal data we hold about you</li>
+        <li style={S.li}>Correct inaccurate or incomplete data</li>
+        <li style={S.li}>Request deletion of your data</li>
+        <li style={S.li}>Withdraw consent for data processing</li>
+        <li style={S.li}>Lodge a complaint with a regulatory authority</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="6. Cookies">
+      <p style={S.p}>We use cookies and local storage to maintain your session and remember your preferences. You can disable cookies in your browser settings, but some features may not function correctly.</p>
+    </PolicySection>
+    <PolicySection title="7. Security">
+      <p style={S.p}>We implement industry-standard security measures including HTTPS encryption, secure JWT-based authentication, and row-level security in our database. However, no system is completely secure — please use a strong, unique password for your account.</p>
+    </PolicySection>
+    <PolicySection title="8. Children's Privacy">
+      <p style={S.p}>AutoApply AI is not intended for users under 18 years of age. We do not knowingly collect data from minors. If you believe a minor has provided us data, contact us immediately.</p>
+    </PolicySection>
+    <div style={S.contact}><p style={{ ...S.p, margin: 0 }}>Privacy concerns? Contact our Data Officer at <strong style={{ color: "#93C5FD" }}>info@machmiles.com</strong></p></div>
+  </>);
+}
+
+function REFUND_CONTENT() {
+  return (<>
+    <PolicySection title="Overview">
+      <p style={S.p}>At AutoApply AI, we stand behind our product. This Refund Policy explains the circumstances under which refunds are available for our paid subscription plans (Pro at ₹599/month and Premium at ₹999/month).</p>
+    </PolicySection>
+    <PolicySection title="7-Day Money-Back Guarantee">
+      <p style={S.p}>If you are not satisfied with your subscription, you may request a full refund within <strong style={{ color: "#fff" }}>7 days of your initial purchase</strong>. This applies only to first-time subscribers and not to renewals.</p>
+      <p style={S.p}>To be eligible for a refund under this guarantee:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>The request must be made within 7 days of the original payment date</li>
+        <li style={S.li}>You must not have used the Auto Apply Engine for more than 10 job applications</li>
+        <li style={S.li}>Your account must be in good standing with no policy violations</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="When Refunds Are NOT Available">
+      <p style={S.p}>Refunds will not be issued in the following cases:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>Requests made after 7 days of the original purchase</li>
+        <li style={S.li}>Subscription renewal charges</li>
+        <li style={S.li}>Accounts found to have violated our Terms & Conditions</li>
+        <li style={S.li}>Dissatisfaction with job search results or employer decisions (outcomes we cannot control)</li>
+        <li style={S.li}>Partial month refunds upon cancellation</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="Refund Process">
+      <p style={S.p}>To request a refund:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>Email us at <strong style={{ color: "#93C5FD" }}>info@machmiles.com</strong> with subject line "Refund Request"</li>
+        <li style={S.li}>Include your registered email address and Razorpay payment ID</li>
+        <li style={S.li}>State the reason for your refund request</li>
+      </ul>
+      <p style={S.p}>Approved refunds are processed within <strong style={{ color: "#fff" }}>5–7 business days</strong> and credited to your original payment method via Razorpay.</p>
+    </PolicySection>
+    <PolicySection title="Technical Issues">
+      <p style={S.p}>If you experience a technical issue that prevents you from using a paid feature, please contact our support team. We will first attempt to resolve the issue. If unresolved within 48 hours, a pro-rated refund may be considered at our discretion.</p>
+    </PolicySection>
+    <div style={S.contact}><p style={{ ...S.p, margin: 0 }}>Refund requests: <strong style={{ color: "#93C5FD" }}>info@machmiles.com</strong> · We respond within 24 business hours.</p></div>
+  </>);
+}
+
+function CANCELLATION_CONTENT() {
+  return (<>
+    <PolicySection title="Cancelling Your Subscription">
+      <p style={S.p}>You may cancel your AutoApply AI subscription at any time. Cancellation is effective at the end of your current billing period — you will retain access to your paid plan features until then.</p>
+    </PolicySection>
+    <PolicySection title="How to Cancel">
+      <p style={S.p}>To cancel your subscription:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>Go to <strong style={{ color: "#fff" }}>Settings → Subscription</strong> in your dashboard and click "Cancel Plan"</li>
+        <li style={S.li}>Or email us at <strong style={{ color: "#93C5FD" }}>info@machmiles.com</strong> with subject "Cancel Subscription" and your registered email</li>
+      </ul>
+      <p style={S.p}>We will confirm your cancellation via email within 1 business day.</p>
+    </PolicySection>
+    <PolicySection title="What Happens After Cancellation">
+      <p style={S.p}>When your subscription is cancelled:</p>
+      <ul style={S.ul}>
+        <li style={S.li}>You retain full access to paid features until the end of the billing period</li>
+        <li style={S.li}>Your account moves to the Free plan automatically</li>
+        <li style={S.li}>Your data (resumes, applications, profile) is retained — nothing is deleted</li>
+        <li style={S.li}>Auto Apply and AI features revert to Free plan limits</li>
+        <li style={S.li}>You can re-subscribe at any time to regain full access</li>
+      </ul>
+    </PolicySection>
+    <PolicySection title="No Partial Refunds on Cancellation">
+      <p style={S.p}>Cancelling your subscription does not entitle you to a refund for any unused portion of the current billing period. Your access continues until the period ends. For refund eligibility, please refer to our <strong style={{ color: "#93C5FD" }}>Refund Policy</strong>.</p>
+    </PolicySection>
+    <PolicySection title="Auto-Renewal">
+      <p style={S.p}>Subscriptions renew automatically at the end of each billing period. You will receive a reminder email 3 days before renewal. To prevent a renewal charge, cancel your subscription before the renewal date.</p>
+    </PolicySection>
+    <PolicySection title="Pausing a Subscription">
+      <p style={S.p}>We currently do not support subscription pausing. If you need to take a break, you can cancel and re-subscribe at any time without losing your saved data.</p>
+    </PolicySection>
+    <div style={S.contact}><p style={{ ...S.p, margin: 0 }}>Need help cancelling? Contact us at <strong style={{ color: "#93C5FD" }}>info@machmiles.com</strong></p></div>
+  </>);
+}
+
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("loading");
   const [user, setUser] = useState(null);
 
-  const checkAndRoute = (u) => {
+  const checkAndRoute = async (u) => {
     if (!u) { setScreen("landing"); return; }
     setUser(u);
+    const pendingPlan = localStorage.getItem("pending_plan");
+    if (pendingPlan) {
+      localStorage.removeItem("pending_plan");
+      const plan = PLANS.find(p => p.name === pendingPlan);
+      setScreen("app");
+      if (plan?.razorpay) {
+        setTimeout(() => startPayment(plan, () => {}, () => {}), 800);
+      }
+      return;
+    }
     setScreen(u.onboarded === false ? "onboarding" : "app");
   };
 
   useEffect(() => {
+    // Handle direct policy URL access
+    const path = window.location.pathname;
+    const POLICY_PATHS = {
+      "/privacy-policy": "privacy",
+      "/terms": "terms",
+      "/terms-and-conditions": "terms",
+      "/refund-policy": "refund",
+      "/cancellation-policy": "cancellation",
+    };
+    if (POLICY_PATHS[path]) {
+      setScreen(POLICY_PATHS[path]);
+      return;
+    }
+
     // Check for password recovery hash immediately
     if (window.location.hash.includes("type=recovery")) {
       setScreen("reset-password");
@@ -3400,11 +4671,22 @@ export default function App() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
-  if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />;
+  const goToPolicy = (key) => {
+    const urlMap = { privacy: "/privacy-policy", terms: "/terms", refund: "/refund-policy", cancellation: "/cancellation-policy" };
+    window.history.pushState(null, "", urlMap[key] || "/");
+    setScreen(key);
+  };
+  const goHome = () => { window.history.pushState(null, "", "/"); setScreen("landing"); };
+
+  if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
   if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} onBack={() => setScreen("landing")} />;
   if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} onBack={() => setScreen("landing")} />;
   if (screen === "reset-password") return <ResetPasswordScreen onDone={() => { window.location.hash = ""; setScreen("login"); }} />;
   if (screen === "onboarding") return <Onboarding user={user} onComplete={() => setScreen("app")} />;
-  if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); setScreen("landing"); }} onHome={() => setScreen("landing")} />;
+  if (screen === "app") return <AppShell user={user} onLogout={() => { setUser(null); goHome(); }} onGoHome={goHome} />;
+  if (screen === "terms") return <PolicyPage title="Terms & Conditions" onBack={goHome} content={TERMS_CONTENT} />;
+  if (screen === "privacy") return <PolicyPage title="Privacy Policy" onBack={goHome} content={PRIVACY_CONTENT} />;
+  if (screen === "refund") return <PolicyPage title="Refund Policy" onBack={goHome} content={REFUND_CONTENT} />;
+  if (screen === "cancellation") return <PolicyPage title="Cancellation Policy" onBack={goHome} content={CANCELLATION_CONTENT} />;
   return null;
 }
