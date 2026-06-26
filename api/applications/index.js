@@ -1,14 +1,15 @@
-// api/applications/index.js
-// GET all applications, POST new application
+import { createClient } from '@supabase/supabase-js';
+import { handleCors, ok, created, badReq, err, authenticate, resolveUserId } from '../_lib/helpers.js';
 
-const supabase = require('../_lib/supabase');
-const { handleCors, ok, created, badReq, err, authenticate, validate } = require('../_lib/helpers');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (handleCors(req, res)) return;
 
   const user = await authenticate(req, res);
   if (!user) return;
+
+  const userId = resolveUserId(req, user);
 
   try {
     if (req.method === 'GET') {
@@ -18,8 +19,8 @@ module.exports = async (req, res) => {
 
       let query = supabase
         .from('applications')
-        .select('*, resumes(name)', { count: 'exact' })
-        .eq('user_id', user.id)
+        .select('*', { count: 'exact' })
+        .eq('user_id', userId)
         .order('applied_at', { ascending: false })
         .range(from, to);
 
@@ -31,47 +32,30 @@ module.exports = async (req, res) => {
 
       return ok(res, {
         applications: data,
-        pagination: { total: count, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(count / limit) },
+        pagination: { total: count, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(count / parseInt(limit)) },
       });
     }
 
     if (req.method === 'POST') {
       const { company, position, job_url, status = 'applied', match_score, cover_letter, notes, resume_id } = req.body || {};
+      if (!company || !position) return badReq(res, 'Company and position are required');
 
-      const errors = validate({ company, position }, {
-        company:  { required: true },
-        position: { required: true },
-      });
-      if (errors.length) return badReq(res, 'Validation failed', errors);
-
-      // Check duplicate
       const { data: dup } = await supabase
-        .from('applications')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('company', company)
-        .eq('position', position)
-        .single();
-
+        .from('applications').select('id')
+        .eq('user_id', userId).eq('company', company).eq('position', position).single();
       if (dup) return badReq(res, 'You already applied to this position at this company');
 
       const { data, error } = await supabase
         .from('applications')
-        .insert({
-          user_id: user.id, company, position, job_url, status,
-          match_score, cover_letter, notes, resume_id,
-          applied_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
+        .insert({ user_id: userId, company, position, job_url, status, match_score, cover_letter, notes, resume_id, applied_at: new Date().toISOString() })
+        .select().single();
       if (error) throw error;
       return created(res, data, 'Application added');
     }
 
     return badReq(res, 'Method not allowed');
   } catch (e) {
-    console.error('Applications error:', e);
+    console.error('Applications error:', e.message);
     return err(res, 'Request failed');
   }
-};
+}
