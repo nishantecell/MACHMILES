@@ -418,17 +418,28 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
 
   return (
     <div style={{ background: "#020817", minHeight: "100vh", color: "#fff", fontFamily: "Inter, sans-serif" }}>
-      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4%", height: 64, gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>A</div>
           <div>
             <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.1rem", lineHeight: 1.2 }}>AutoApply<span style={{ color: "#3B82F6" }}> AI</span></div>
             <div style={{ fontSize: "0.58rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.08em", fontWeight: 500, lineHeight: 1, marginTop: 3 }}>powered by MACHMILES</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={onLogin} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "8px 20px", cursor: "pointer" }}>Log in</button>
-          <button onClick={onSignup} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 20px", cursor: "pointer", fontWeight: 600 }}>Get Started Free</button>
+        <div style={{ display: "flex", gap: 2, alignItems: "center", flex: 1, justifyContent: "center", flexWrap: "nowrap", overflow: "hidden" }}>
+          {[
+            ["Features", () => document.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })],
+            ["How It Works", () => document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })],
+            ["Pricing", () => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })],
+            ["FAQ", () => document.querySelector("#faq")?.scrollIntoView({ behavior: "smooth" })],
+          ].map(([label, action]) => (
+            <button key={label} onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif" }}
+              onMouseEnter={e => e.target.style.color="#fff"} onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.65)"}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
+          <button onClick={onLogin} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: "0.9rem", whiteSpace: "nowrap" }}>Sign In</button>
+          <button onClick={onSignup} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", whiteSpace: "nowrap" }}>Get Started Free</button>
         </div>
       </nav>
 
