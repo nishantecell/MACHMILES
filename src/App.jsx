@@ -400,7 +400,7 @@ function PricingPage({ onSignup, onLogin, onBack }) {
   );
 }
 
-function LandingPage({ onSignup, onLogin, onPolicy }) {
+function LandingPage({ onSignup, onLogin, onPolicy, onPricing }) {
   const [activeFaq, setActiveFaq] = useState(null);
 
   const handlePlanClick = (plan) => {
@@ -716,7 +716,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
             {/* Company */}
             <div>
               <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "2px solid rgba(129,140,248,0.4)" }}>Company</div>
-              {[["Pricing", () => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })], ["About Us", onSignup], ["Reviews", onSignup], ["Privacy Policy", () => onPolicy("privacy")], ["Terms & Conditions", () => onPolicy("terms")], ["Refund Policy", () => onPolicy("refund")], ["Cancellation Policy", () => onPolicy("cancellation")]].map(([label, action]) => (
+              {[["Pricing", onPricing], ["About Us", onSignup], ["Reviews", onSignup], ["Privacy Policy", () => onPolicy("privacy")], ["Terms & Conditions", () => onPolicy("terms")], ["Refund Policy", () => onPolicy("refund")], ["Cancellation Policy", () => onPolicy("cancellation")]].map(([label, action]) => (
                 <div key={label} style={{ marginBottom: 8 }}>
                   <button onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif" }}>{label}</button>
                 </div>
@@ -4739,7 +4739,7 @@ export default function App() {
   const goToPricing = () => { window.history.pushState(null, "", "/Pricing"); setScreen("pricing"); };
 
   if (screen === "pricing") return <PricingPage onSignup={() => { window.history.pushState(null, "", "/"); setScreen("signup"); }} onLogin={() => { window.history.pushState(null, "", "/"); setScreen("login"); }} onBack={goHome} />;
-  if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
+  if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} onPricing={goToPricing} />;
   if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} onBack={() => setScreen("landing")} />;
   if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} onBack={() => setScreen("landing")} />;
   if (screen === "reset-password") return <ResetPasswordScreen onDone={() => { window.location.hash = ""; setScreen("login"); }} />;
