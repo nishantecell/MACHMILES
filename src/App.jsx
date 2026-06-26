@@ -430,7 +430,7 @@ function LandingPage({ onSignup, onLogin, onPolicy, onPricing }) {
           {[
             ["Features", () => document.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })],
             ["How It Works", () => document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })],
-            ["Pricing", () => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })],
+            ["Pricing", onPricing],
             ["FAQ", () => document.querySelector("#faq")?.scrollIntoView({ behavior: "smooth" })],
           ].map(([label, action]) => (
             <button key={label} onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif" }}
