@@ -348,6 +348,58 @@ function Spinner() {
 }
 
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
+function PricingPage({ onSignup, onLogin, onBack }) {
+  const handlePlanClick = (plan) => {
+    if (plan.razorpay) localStorage.setItem("pending_plan", plan.name);
+    onSignup();
+  };
+  return (
+    <div style={{ minHeight: "100vh", background: "#020817", color: "#fff", fontFamily: "Inter,sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+      <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1.25rem 5%", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: "#fff", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.9rem" }}>A</div>
+          AutoApply AI
+        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button onClick={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.7)", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 500 }}>Pricing</button>
+          <button onClick={onLogin} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "8px 20px", cursor: "pointer" }}>Log in</button>
+          <button onClick={onSignup} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 20px", cursor: "pointer", fontWeight: 600 }}>Get Started Free</button>
+        </div>
+      </nav>
+      <div style={{ textAlign: "center", padding: "4rem 5% 3rem" }}>
+        <div style={{ display: "inline-block", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#60A5FA", fontWeight: 600, marginBottom: "1.5rem" }}>Pricing Plans</div>
+        <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(2rem,5vw,3.5rem)", letterSpacing: "-0.03em", margin: "0 0 1rem" }}>Simple, transparent pricing</h1>
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "1.1rem", margin: 0 }}>Secure payments via Razorpay · UPI, Cards, NetBanking</p>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: "1.25rem", maxWidth: 1200, margin: "0 auto 5rem", padding: "0 5%" }}>
+        {PLANS.map(plan => (
+          <div key={plan.name} style={{ background: plan.enterprise ? "linear-gradient(145deg,rgba(251,191,36,0.08),rgba(245,158,11,0.04))" : plan.highlight ? "linear-gradient(145deg,rgba(59,130,246,0.15),rgba(139,92,246,0.08))" : "rgba(255,255,255,0.02)", border: `1.5px solid ${plan.enterprise ? "rgba(251,191,36,0.4)" : plan.highlight ? "rgba(59,130,246,0.5)" : "rgba(255,255,255,0.07)"}`, borderRadius: 20, padding: "2rem", position: "relative" }}>
+            {plan.highlight && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", fontSize: "0.7rem", fontWeight: 700, padding: "4px 14px", borderRadius: 100 }}>MOST POPULAR</div>}
+            {plan.enterprise && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg,#F59E0B,#D97706)", color: "#fff", fontSize: "0.7rem", fontWeight: 700, padding: "4px 14px", borderRadius: 100 }}>🏢 FOR BUSINESS</div>}
+            <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, marginBottom: 4, color: plan.enterprise ? "#FCD34D" : "#fff" }}>{plan.name}</h3>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: "1.5rem" }}>
+              <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem", color: plan.enterprise ? "#FCD34D" : "#fff" }}>{plan.price}</span>
+              <span style={{ color: "rgba(255,255,255,0.4)" }}>{plan.period}</span>
+            </div>
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 2rem" }}>
+              {plan.features.map(f => <li key={f} style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.85rem", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", gap: 10 }}><span style={{ color: plan.enterprise ? "#F59E0B" : "#3B82F6" }}>✓</span>{f}</li>)}
+            </ul>
+            {plan.enterprise ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <a href="https://mail.google.com/mail/?view=cm&to=info@machmiles.com&su=Enterprise Plan Enquiry&body=Hi, I'm interested in the MachMiles Enterprise plan. Please get in touch." target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: 12, background: "linear-gradient(135deg,#F59E0B,#D97706)", border: "none", color: "#fff", borderRadius: 10, fontWeight: 700, cursor: "pointer", fontSize: "0.95rem", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>📧 Email Us →</a>
+                <a href="https://wa.me/918091355527?text=Hi,%20I'm%20interested%20in%20the%20MachMiles%20Enterprise%20plan.%20Please%20get%20in%20touch." target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: 12, background: "rgba(37,211,102,0.15)", border: "1px solid rgba(37,211,102,0.4)", color: "#25D366", borderRadius: 10, fontWeight: 700, cursor: "pointer", fontSize: "0.9rem", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>💬 WhatsApp</a>
+              </div>
+            ) : (
+              <button onClick={() => handlePlanClick(plan)} style={{ width: "100%", padding: 12, background: plan.highlight ? "linear-gradient(135deg,#3B82F6,#8B5CF6)" : "rgba(255,255,255,0.06)", border: plan.highlight ? "none" : "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: 10, fontWeight: 600, cursor: "pointer", fontSize: "0.95rem" }}>{plan.cta}</button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LandingPage({ onSignup, onLogin, onPolicy }) {
   const [activeFaq, setActiveFaq] = useState(null);
 
@@ -4590,6 +4642,10 @@ export default function App() {
   useEffect(() => {
     // Handle direct policy URL access
     const path = window.location.pathname;
+    if (path === "/Pricing" || path === "/pricing") {
+      setScreen("pricing");
+      return;
+    }
     const POLICY_PATHS = {
       "/privacy-policy": "privacy",
       "/terms": "terms",
@@ -4669,7 +4725,9 @@ export default function App() {
     setScreen(key);
   };
   const goHome = () => { window.history.pushState(null, "", "/"); setScreen("landing"); };
+  const goToPricing = () => { window.history.pushState(null, "", "/Pricing"); setScreen("pricing"); };
 
+  if (screen === "pricing") return <PricingPage onSignup={() => { window.history.pushState(null, "", "/"); setScreen("signup"); }} onLogin={() => { window.history.pushState(null, "", "/"); setScreen("login"); }} onBack={goHome} />;
   if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
   if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} onBack={() => setScreen("landing")} />;
   if (screen === "signup") return <AuthScreen mode="signup" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("login")} onBack={() => setScreen("landing")} />;
