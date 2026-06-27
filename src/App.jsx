@@ -430,12 +430,13 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
           {[
             ["Features", () => document.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })],
             ["How It Works", () => document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })],
-            ["Pricing", () => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })],
             ["FAQ", () => document.querySelector("#faq")?.scrollIntoView({ behavior: "smooth" })],
           ].map(([label, action]) => (
             <button key={label} onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif" }}
               onMouseEnter={e => e.target.style.color="#fff"} onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.65)"}>{label}</button>
           ))}
+          <a href="https://machmiles.com/pricing" target="_blank" rel="noopener noreferrer" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif", textDecoration: "none" }}
+            onMouseEnter={e => e.target.style.color="#fff"} onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.65)"}>Pricing</a>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
           <button onClick={onLogin} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: "0.9rem", whiteSpace: "nowrap" }}>Sign In</button>
