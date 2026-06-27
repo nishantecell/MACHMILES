@@ -4745,13 +4745,6 @@ function DonationsPage({ onBack }) {
     { src: "https://images.unsplash.com/photo-1607190074257-dd4b7af0309f?w=600&q=80", alt: "Recovery efforts" },
   ];
 
-  const VIDEOS = [
-    { id: "dMd1XEDe5qc", title: "Venezuela Earthquake Emergency Response" },
-    { id: "CiU_1nM1bpg", title: "Rescue Operations Live" },
-    { id: "BjIGSk9FZRU", title: "Humanitarian Aid Delivery" },
-    { id: "hVpGbLqLSHM", title: "Volunteers at Work" },
-    { id: "5Kp0oqknSo8", title: "Recovery and Rebuilding" },
-  ];
 
   const [selectedAmount, setSelectedAmount] = useState(500);
   const [customAmount, setCustomAmount] = useState("");
@@ -4848,8 +4841,7 @@ function DonationsPage({ onBack }) {
     .don-preset:hover{border-color:#DC2626!important;color:#DC2626!important}
     .don-cta:hover{opacity:0.92;transform:translateY(-1px)}
     .don-cta{transition:opacity 0.2s,transform 0.2s}
-    .don-video:hover iframe{border-color:rgba(220,38,38,0.6)!important}
-    .don-impact:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,0.12)}
+.don-impact:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,0.12)}
     .don-impact{transition:transform 0.25s,box-shadow 0.25s;cursor:pointer}
     .don-use:hover{border-color:rgba(220,38,38,0.4)!important;background:rgba(220,38,38,0.04)!important}
     .don-use{transition:border-color 0.2s,background 0.2s}
@@ -5009,26 +5001,6 @@ function DonationsPage({ onBack }) {
             {GALLERY_IMAGES.map((img, i) => (
               <div key={i} style={{ breakInside: "avoid", marginBottom: "1rem" }}>
                 <img loading="lazy" src={img.src} alt={img.alt} className="don-img" onClick={() => setLightbox(i)} style={{ width: "100%", borderRadius: 10, display: "block", objectFit: "cover" }} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Videos */}
-      <div style={{ padding: "5rem 5%", background: "#f8fafc" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
-            <div style={{ display: "inline-block", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#DC2626", fontWeight: 700, marginBottom: "1rem" }}>🎥 Watch &amp; Witness</div>
-            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: 0 }}>Relief Efforts in Action</h2>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: "1.25rem" }}>
-            {VIDEOS.map(v => (
-              <div key={v.id} className="don-video" style={{ borderRadius: 14, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
-                <div style={{ position: "relative", paddingBottom: "56.25%", height: 0 }}>
-                  <iframe src={`https://www.youtube.com/embed/${v.id}?rel=0`} title={v.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "2px solid #e2e8f0", borderRadius: 14 }} loading="lazy" />
-                </div>
-                <div style={{ padding: "12px 14px", background: "#fff", fontSize: "0.85rem", fontWeight: 600, color: "#374151" }}>{v.title}</div>
               </div>
             ))}
           </div>
