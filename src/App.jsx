@@ -418,7 +418,38 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
 
   return (
     <div style={{ background: "#020817", minHeight: "100vh", color: "#fff", fontFamily: "Inter, sans-serif" }}>
-      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4%", height: 64, gap: 16 }}>
+      <style>{`
+        @keyframes don-marquee { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }
+        @keyframes don-pulse-red { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5) } 70% { box-shadow: 0 0 0 8px rgba(220,38,38,0) } }
+        .don-bar-link:hover { background: rgba(220,38,38,0.25) !important; }
+        .don-bar-link { transition: background 0.2s; }
+        .don-cta-card:hover { transform: translateY(-2px); box-shadow: 0 16px 48px rgba(220,38,38,0.35) !important; }
+        .don-cta-card { transition: transform 0.25s, box-shadow 0.25s; }
+      `}</style>
+
+      {/* Emergency Announcement Bar */}
+      <a href="/donations" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, background: "linear-gradient(90deg,#7f1d1d,#DC2626,#7f1d1d)", padding: "9px 16px", textDecoration: "none", position: "relative", zIndex: 200, overflow: "hidden", cursor: "pointer" }} className="don-bar-link">
+        <span style={{ animation: "don-pulse-red 2s infinite", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 8, height: 8, borderRadius: "50%", background: "#fff", flexShrink: 0 }} />
+        <div style={{ overflow: "hidden", flex: 1, maxWidth: 700 }}>
+          <div style={{ display: "flex", gap: "3rem", whiteSpace: "nowrap", animation: "don-marquee 18s linear infinite", width: "max-content" }}>
+            {[1,2].map(i => (
+              <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "2rem", fontSize: "0.82rem", color: "#fff", fontWeight: 600, letterSpacing: "0.02em" }}>
+                <span>🇻🇪 EMERGENCY APPEAL</span>
+                <span style={{ opacity: 0.6 }}>·</span>
+                <span>Venezuela Earthquake Relief — Help families in crisis</span>
+                <span style={{ opacity: 0.6 }}>·</span>
+                <span>Donate Now →</span>
+                <span style={{ opacity: 0.6 }}>·</span>
+                <span>Every ₹100 provides emergency meals</span>
+                <span style={{ opacity: 0.6 }}>·</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        <span style={{ flexShrink: 0, background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.35)", borderRadius: 100, padding: "3px 12px", fontSize: "0.75rem", color: "#fff", fontWeight: 700, whiteSpace: "nowrap" }}>Donate →</span>
+      </a>
+
+      <nav style={{ position: "fixed", top: 38, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4%", height: 64, gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>A</div>
           <div>
@@ -444,7 +475,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
         </div>
       </nav>
 
-      <section style={{ padding: "10rem 5% 5rem", textAlign: "center", position: "relative" }}>
+      <section style={{ padding: "11.5rem 5% 5rem", textAlign: "center", position: "relative" }}>
         <div style={{ position: "absolute", top: "20%", left: "50%", transform: "translateX(-50%)", width: 600, height: 400, background: "radial-gradient(ellipse,rgba(59,130,246,0.2),transparent 70%)", pointerEvents: "none" }} />
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 100, padding: "6px 16px", marginBottom: "2rem", fontSize: "0.8rem", color: "#93C5FD" }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#3B82F6", display: "inline-block" }} />
@@ -587,6 +618,36 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
           🚀 <span style={{ background: "rgba(255,255,255,0.2)", borderRadius: 6, padding: "2px 10px", marginRight: 10 }}>NEW</span>
           10+ must-have job search tools bundled into 1 solution — <button onClick={onSignup} style={{ background: "none", border: "none", color: "#A5F3FC", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontSize: "0.95rem" }}>Try Free →</button>
         </p>
+      </div>
+
+      {/* Venezuela Donation Highlight */}
+      <div style={{ padding: "0 5% 4rem" }}>
+        <a href="/donations" style={{ display: "block", textDecoration: "none", maxWidth: 1100, margin: "0 auto" }} className="don-cta-card">
+          <div style={{ background: "linear-gradient(135deg,rgba(127,29,29,0.6),rgba(30,64,175,0.5))", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 20, padding: "2rem 2.5rem", display: "flex", alignItems: "center", gap: "2rem", flexWrap: "wrap", boxShadow: "0 8px 32px rgba(220,38,38,0.2)", backdropFilter: "blur(12px)", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", inset: 0, background: "url('https://images.unsplash.com/photo-1615461066841-6116e61058f4?w=1200&q=60')", backgroundSize: "cover", backgroundPosition: "center", opacity: 0.08, borderRadius: 20 }} />
+            <div style={{ fontSize: "3.5rem", flexShrink: 0, position: "relative" }}>🇻🇪</div>
+            <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(220,38,38,0.2)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 100, padding: "3px 10px", fontSize: "0.72rem", color: "#fca5a5", fontWeight: 700, marginBottom: 8, letterSpacing: "0.05em" }}>
+                🚨 EMERGENCY RELIEF CAMPAIGN
+              </div>
+              <h3 style={{ margin: "0 0 6px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.1rem,2.5vw,1.5rem)", color: "#fff", letterSpacing: "-0.02em" }}>Help Venezuela Rise Again</h3>
+              <p style={{ margin: 0, fontSize: "0.88rem", color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>Thousands of families displaced by the earthquake need urgent help. Food, shelter, clean water, and medical care — your donation reaches them directly.</p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0, position: "relative" }}>
+              <div style={{ display: "flex", gap: 16 }}>
+                {[["₹100", "Meals"], ["₹500", "Medicine"], ["₹1000", "Shelter"]].map(([amt, label]) => (
+                  <div key={label} style={{ textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1rem", color: "#fca5a5" }}>{amt}</div>
+                    <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", marginTop: 1 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, background: "linear-gradient(135deg,#DC2626,#b91c1c)", color: "#fff", borderRadius: 10, padding: "10px 24px", fontWeight: 700, fontSize: "0.9rem", boxShadow: "0 4px 16px rgba(220,38,38,0.4)" }}>
+                ❤️ Donate Now →
+              </div>
+            </div>
+          </div>
+        </a>
       </div>
 
       <section id="features" style={{ padding: "5rem 5%" }}>
