@@ -124,23 +124,52 @@ export default async function handler(req, res) {
   // --- Register ---
   if (!name || !email || !password) return badReq(res, 'Name, email and password are required');
   if (password.length < 6) return badReq(res, 'Password must be at least 6 characters');
+  const cleanedEmail = email.trim().toLowerCase();
+  const cleanedPhone = (phone || '').replace(/\D/g, '');
   try {
+    let userId;
+    let isNew = true;
+
     const { data, error } = await supabase.auth.admin.createUser({
-      email: email.trim().toLowerCase(), password, email_confirm: true,
+      email: cleanedEmail, password, email_confirm: true,
       user_metadata: { full_name: name.trim() },
     });
+
     if (error) {
-      if (error.message.includes('already registered') || error.message.includes('already been registered'))
-        return res.status(409).json({ success: false, message: 'An account with this email already exists' });
-      throw error;
+      const alreadyExists = error.message.includes('already registered') || error.message.includes('already been registered');
+      if (!alreadyExists) throw error;
+
+      // Auth user exists — check if a profile row also exists
+      const { data: authList } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      const existingAuth = (authList?.users || []).find(u => u.email === cleanedEmail);
+      if (!existingAuth) return res.status(409).json({ success: false, message: 'An account with this email already exists' });
+
+      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', existingAuth.id).single();
+      if (existingProfile) {
+        // Full account exists — tell user to sign in
+        return res.status(409).json({ success: false, message: 'An account with this email already exists. Please sign in instead.' });
+      }
+
+      // Auth user exists but profile was deleted — reset password and recreate profile
+      await supabase.auth.admin.updateUserById(existingAuth.id, {
+        password,
+        user_metadata: { full_name: name.trim() },
+        email_confirm: true,
+      });
+      userId = existingAuth.id;
+      isNew = false;
+    } else {
+      userId = data.user.id;
     }
-    const cleanedPhone = (phone || '').replace(/\D/g, '');
+
     await supabase.from('profiles').upsert({
-      id: data.user.id, full_name: name.trim(),
-      email: email.trim().toLowerCase(), phone: cleanedPhone || null, plan: 'free', onboarded: false,
+      id: userId, full_name: name.trim(),
+      email: cleanedEmail, phone: cleanedPhone || null, plan: 'free', onboarded: false,
     });
-    await sendWelcomeEmail(email.trim().toLowerCase(), name.trim());
-    return res.status(201).json({ success: true, message: 'Account created successfully!', data: { userId: data.user.id, email: data.user.email } });
+
+    if (isNew) await sendWelcomeEmail(cleanedEmail, name.trim());
+
+    return res.status(201).json({ success: true, message: 'Account created successfully!', data: { userId, email: cleanedEmail } });
   } catch (e) {
     console.error('Register error:', e.message);
     return err(res, e.message);

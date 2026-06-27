@@ -97,7 +97,8 @@ export default async function handler(req, res) {
     // DELETE /admin/users?id=X — permanently delete user
     if (req.method === 'DELETE' && id) {
       await supabase.from('profiles').delete().eq('id', id);
-      await supabase.auth.admin.deleteUser(id);
+      const { error: authDelErr } = await supabase.auth.admin.deleteUser(id);
+      if (authDelErr) console.error('Auth delete failed for', id, authDelErr.message);
       return ok(res, null, 'User deleted');
     }
 
