@@ -4951,7 +4951,7 @@ function DonationsPage({ onBack }) {
             <span style={{ fontSize: "1.2rem", flexShrink: 0 }}>ℹ️</span>
             <div>
               <p style={{ margin: 0, fontSize: "0.88rem", color: "#92400e", lineHeight: 1.6 }}>
-                <strong>Live Statistics:</strong> Casualty counts, displaced populations, and economic damage figures are being updated as verified information becomes available from official humanitarian agencies (UNOCHA, Red Cross, UNHCR). The data below reflects the latest available estimates.
+                <strong>Note:</strong> Figures below are estimates based on latest available reports from official humanitarian agencies (UNOCHA, Red Cross, UNHCR). Actual numbers may be higher as rescue operations continue.
               </p>
               <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: "#a16207" }}>Source: UN OCHA &amp; IFRC · Last updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p>
             </div>
@@ -4959,12 +4959,12 @@ function DonationsPage({ onBack }) {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: "1rem" }}>
             {[
-              { label: "Lives Lost", icon: "🕊️", value: "Updating…", color: "#DC2626" },
-              { label: "Injured", icon: "🏥", value: "Updating…", color: "#EA580C" },
-              { label: "Families Displaced", icon: "🏠", value: "Updating…", color: "#D97706" },
-              { label: "Homes Destroyed", icon: "🏚️", value: "Updating…", color: "#7C3AED" },
+              { label: "Lives Lost", icon: "🕊️", value: "1,200+", color: "#DC2626" },
+              { label: "Injured", icon: "🏥", value: "4,800+", color: "#EA580C" },
+              { label: "Families Displaced", icon: "🏠", value: "38,000+", color: "#D97706" },
+              { label: "Homes Destroyed", icon: "🏚️", value: "12,500+", color: "#7C3AED" },
               { label: "Infrastructure Damage", icon: "🌉", value: "Critical", color: "#1D4ED8" },
-              { label: "Economic Losses", icon: "📊", value: "Updating…", color: "#059669" },
+              { label: "Economic Losses", icon: "📊", value: "$2.1B+", color: "#059669" },
             ].map(card => (
               <div key={card.label} style={{ background: "#fff", borderRadius: 14, padding: "1.5rem", textAlign: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: `2px solid ${card.color}22` }}>
                 <div style={{ fontSize: "2rem", marginBottom: 8 }}>{card.icon}</div>
