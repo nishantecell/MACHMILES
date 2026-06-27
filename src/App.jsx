@@ -717,7 +717,10 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
             {/* Company */}
             <div>
               <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "2px solid rgba(129,140,248,0.4)" }}>Company</div>
-              {[["Pricing", () => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })], ["About Us", onSignup], ["Reviews", onSignup], ["Privacy Policy", () => onPolicy("privacy")], ["Terms & Conditions", () => onPolicy("terms")], ["Refund Policy", () => onPolicy("refund")], ["Cancellation Policy", () => onPolicy("cancellation")]].map(([label, action]) => (
+              <div style={{ marginBottom: 8 }}>
+                <a href="https://machmiles.com/pricing" target="_blank" rel="noopener noreferrer" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif", textDecoration: "none" }}>Pricing</a>
+              </div>
+              {[["About Us", onSignup], ["Reviews", onSignup], ["Privacy Policy", () => onPolicy("privacy")], ["Terms & Conditions", () => onPolicy("terms")], ["Refund Policy", () => onPolicy("refund")], ["Cancellation Policy", () => onPolicy("cancellation")]].map(([label, action]) => (
                 <div key={label} style={{ marginBottom: 8 }}>
                   <button onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif" }}>{label}</button>
                 </div>
