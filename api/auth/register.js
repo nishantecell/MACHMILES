@@ -41,7 +41,7 @@ async function sendWelcomeEmail(email, name) {
     <p style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.6">Many of our users upgrade when they're actively job hunting because it allows them to apply consistently without spending hours every day.</p>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.6">There's absolutely no rush—you can explore the platform first and upgrade whenever you're ready.</p>
     <div style="text-align:center;margin:0 0 32px">
-      <a href="https://machmiles.com/Pricing" style="display:inline-block;background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 36px;border-radius:10px">👉 Upgrade whenever you're ready</a>
+      <a href="https://machmiles.com/pricing" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 36px;border-radius:10px">👉 Upgrade whenever you're ready</a>
     </div>
 
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 24px">
