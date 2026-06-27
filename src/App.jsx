@@ -4723,7 +4723,7 @@ function DonationsPage({ onBack }) {
   ];
 
   const GALLERY_IMAGES = [
-    { src: "https://images.unsplash.com/photo-1516912481808-3406841bd33c?w=600&q=80", alt: "Earthquake rescue operations" },
+    { src: "https://dims.apnews.com/dims4/default/156bf5b/2147483647/strip/true/crop/5472x3648+0+0/resize/2720x1814!/format/webp/quality/90/?url=https%3A%2F%2Fassets.apnews.com%2Fc4%2Fc4%2F6084514f3268831a48b89203a6ba%2Fcb58c399e2884d0289401b39ce9ea2a6", alt: "Venezuela earthquake aftermath" },
     { src: "https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=600&q=80", alt: "Volunteers helping families" },
     { src: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&q=80", alt: "Children receiving food" },
     { src: "https://images.unsplash.com/photo-1542810634-71277d95dcbb?w=600&q=80", alt: "Medical camp" },
