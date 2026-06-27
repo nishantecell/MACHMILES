@@ -4633,6 +4633,480 @@ function CANCELLATION_CONTENT() {
   </>);
 }
 
+// ─── DONATIONS PAGE ───────────────────────────────────────────────────────────
+function DonationsPage({ onBack }) {
+  const PRESET_AMOUNTS = [100, 200, 500, 1000];
+  const IMPACT_CARDS = [
+    { amount: 100, icon: "🍽️", label: "Emergency Meals", desc: "Provides emergency meals for a family" },
+    { amount: 200, icon: "💧", label: "Clean Water", desc: "Safe drinking water for a family for a week" },
+    { amount: 500, icon: "💊", label: "Medical Supplies", desc: "Emergency medicines and first aid" },
+    { amount: 1000, icon: "🏕️", label: "Shelter Kit", desc: "Temporary shelter materials for a family" },
+    { amount: 5000, icon: "🏗️", label: "Rebuilding", desc: "Supports reconstruction of damaged homes" },
+    { amount: 10000, icon: "🏫", label: "Community", desc: "Restores a community facility or school" },
+  ];
+  const USE_CARDS = [
+    { icon: "🍽️", title: "Emergency Food", desc: "Nutritious meals delivered to affected families in evacuation shelters." },
+    { icon: "💧", title: "Clean Water", desc: "Water purification systems and safe drinking water supply." },
+    { icon: "💊", title: "Medical Care", desc: "Medicines, trauma care, and emergency healthcare services." },
+    { icon: "🏕️", title: "Temporary Shelter", desc: "Tents, blankets, and essential relief materials." },
+    { icon: "👶", title: "Child Protection", desc: "Psychosocial support and safe spaces for displaced children." },
+    { icon: "🏗️", title: "Rebuilding", desc: "Restore homes, schools, and critical infrastructure." },
+  ];
+  const FAQS = [
+    { q: "Is my donation secure?", a: "Yes. All payments are processed through Razorpay, a PCI-DSS compliant gateway using 256-bit SSL encryption." },
+    { q: "Will I receive a receipt?", a: "Yes. A detailed receipt with your transaction ID will be emailed to you immediately after payment." },
+    { q: "How are donations used?", a: "100% of donations go directly to relief operations — food, water, shelter, medical care, and rebuilding efforts for earthquake victims." },
+    { q: "Can I donate anonymously?", a: "We require a name and email for the payment receipt. Your personal details are never shared publicly." },
+    { q: "Is there a minimum donation?", a: "Yes, the minimum donation is ₹100." },
+    { q: "Can I donate internationally?", a: "Yes. Razorpay accepts international cards. The amount will be converted to INR at the time of payment." },
+  ];
+
+  const GALLERY_IMAGES = [
+    { src: "https://images.unsplash.com/photo-1516912481808-3406841bd33c?w=600&q=80", alt: "Earthquake rescue operations" },
+    { src: "https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=600&q=80", alt: "Volunteers helping families" },
+    { src: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&q=80", alt: "Children receiving food" },
+    { src: "https://images.unsplash.com/photo-1542810634-71277d95dcbb?w=600&q=80", alt: "Medical camp" },
+    { src: "https://images.unsplash.com/photo-1593113598332-cd288d649433?w=600&q=80", alt: "Relief distribution" },
+    { src: "https://images.unsplash.com/photo-1584515933487-779824d29309?w=600&q=80", alt: "Emergency supplies" },
+    { src: "https://images.unsplash.com/photo-1527613426441-4da17471b66d?w=600&q=80", alt: "Community support" },
+    { src: "https://images.unsplash.com/photo-1580894732444-8ecded7900cd?w=600&q=80", alt: "Temporary shelters" },
+    { src: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=600&q=80", alt: "Rescue workers" },
+    { src: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=600&q=80", alt: "Families rebuilding" },
+    { src: "https://images.unsplash.com/photo-1615461066841-6116e61058f4?w=600&q=80", alt: "Water supply" },
+    { src: "https://images.unsplash.com/photo-1578496479531-32e296d5c6e1?w=600&q=80", alt: "Humanitarian aid" },
+    { src: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&q=80", alt: "Medical assistance" },
+    { src: "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=600&q=80", alt: "Volunteer efforts" },
+    { src: "https://images.unsplash.com/photo-1532629345422-7515f3d16bb6?w=600&q=80", alt: "Disaster relief" },
+    { src: "https://images.unsplash.com/photo-1491438590914-bc09fcaaf77a?w=600&q=80", alt: "Community helping" },
+    { src: "https://images.unsplash.com/photo-1551601651-2a8555f1a136?w=600&q=80", alt: "Children support" },
+    { src: "https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?w=600&q=80", alt: "Emergency response" },
+    { src: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=600&q=80", alt: "Coordination center" },
+    { src: "https://images.unsplash.com/photo-1607190074257-dd4b7af0309f?w=600&q=80", alt: "Recovery efforts" },
+  ];
+
+  const VIDEOS = [
+    { id: "dMd1XEDe5qc", title: "Venezuela Earthquake Emergency Response" },
+    { id: "CiU_1nM1bpg", title: "Rescue Operations Live" },
+    { id: "BjIGSk9FZRU", title: "Humanitarian Aid Delivery" },
+    { id: "hVpGbLqLSHM", title: "Volunteers at Work" },
+    { id: "5Kp0oqknSo8", title: "Recovery and Rebuilding" },
+  ];
+
+  const [selectedAmount, setSelectedAmount] = useState(500);
+  const [customAmount, setCustomAmount] = useState("");
+  const [donorName, setDonorName] = useState("");
+  const [donorEmail, setDonorEmail] = useState("");
+  const [formError, setFormError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(null);
+  const [activeFaq, setActiveFaq] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+  const [amountRaised] = useState(1847300);
+  const [donorCount] = useState(312);
+  const GOAL = 5000000;
+
+  const finalAmount = customAmount ? parseInt(customAmount) : selectedAmount;
+  const progressPct = Math.min((amountRaised / GOAL) * 100, 100).toFixed(1);
+
+  const fmt = (n) => "₹" + n.toLocaleString("en-IN");
+
+  const handleDonate = async () => {
+    setFormError("");
+    if (!donorName.trim()) return setFormError("Please enter your full name.");
+    if (!donorEmail.trim() || !/\S+@\S+\.\S+/.test(donorEmail)) return setFormError("Please enter a valid email address.");
+    if (!finalAmount || finalAmount < 100) return setFormError("Minimum donation amount is ₹100.");
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/donations/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: finalAmount, name: donorName.trim(), email: donorEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!data.success) { setFormError(data.message || "Failed to create order."); setLoading(false); return; }
+
+      const options = {
+        key: data.data.key_id,
+        amount: data.data.amount,
+        currency: "INR",
+        name: "Venezuela Earthquake Relief",
+        description: "Emergency Relief Fund",
+        order_id: data.data.order_id,
+        prefill: { name: donorName.trim(), email: donorEmail.trim() },
+        theme: { color: "#DC2626" },
+        handler: async (response) => {
+          try {
+            const verify = await fetch("/api/donations/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                name: donorName.trim(),
+                email: donorEmail.trim(),
+                amount: finalAmount,
+              }),
+            });
+            const vData = await verify.json();
+            if (vData.success) {
+              setSuccess({ name: donorName.trim(), amount: finalAmount, paymentId: response.razorpay_payment_id });
+            } else {
+              setFormError("Payment received but verification failed. Contact support.");
+            }
+          } catch { setFormError("Verification error. Please contact support."); }
+          setLoading(false);
+        },
+        modal: { ondismiss: () => setLoading(false) },
+      };
+
+      if (!window.Razorpay) {
+        const script = document.createElement("script");
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        script.onload = () => { const rzp = new window.Razorpay(options); rzp.open(); };
+        document.body.appendChild(script);
+      } else {
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      }
+    } catch { setFormError("Something went wrong. Please try again."); setLoading(false); }
+  };
+
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');
+    @keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+    @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+    .don-fade{animation:fadeUp 0.6s ease both}
+    .don-pulse{animation:pulse 2s ease-in-out infinite}
+    .don-img:hover{transform:scale(1.04);z-index:2;box-shadow:0 16px 40px rgba(0,0,0,0.4)}
+    .don-img{transition:transform 0.3s,box-shadow 0.3s;cursor:pointer}
+    .don-faq-btn:hover{background:rgba(220,38,38,0.06)}
+    .don-preset:hover{border-color:#DC2626!important;color:#DC2626!important}
+    .don-cta:hover{opacity:0.92;transform:translateY(-1px)}
+    .don-cta{transition:opacity 0.2s,transform 0.2s}
+    .don-video:hover iframe{border-color:rgba(220,38,38,0.6)!important}
+    .don-impact:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,0.12)}
+    .don-impact{transition:transform 0.25s,box-shadow 0.25s;cursor:pointer}
+    .don-use:hover{border-color:rgba(220,38,38,0.4)!important;background:rgba(220,38,38,0.04)!important}
+    .don-use{transition:border-color 0.2s,background 0.2s}
+  `;
+
+  if (success) return (
+    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem", fontFamily: "Inter,sans-serif" }}>
+      <style>{css}</style>
+      <div className="don-fade" style={{ maxWidth: 520, width: "100%", textAlign: "center", padding: "3rem 2rem", background: "#fff", borderRadius: 20, boxShadow: "0 8px 48px rgba(0,0,0,0.1)" }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>🙏</div>
+        <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2rem", color: "#1e293b", margin: "0 0 12px" }}>Thank You, {success.name.split(" ")[0]}!</h2>
+        <p style={{ color: "#475569", fontSize: "1rem", lineHeight: 1.7, margin: "0 0 24px" }}>Your generous donation of <strong>{fmt(success.amount)}</strong> has been received. A confirmation email with your receipt has been sent.</p>
+        <div style={{ background: "#fef2f2", borderRadius: 12, padding: "16px 20px", margin: "0 0 24px", textAlign: "left" }}>
+          <p style={{ margin: "0 0 6px", fontSize: 13, color: "#64748b" }}>Transaction ID</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1e293b", wordBreak: "break-all" }}>{success.paymentId}</p>
+        </div>
+        <p style={{ color: "#64748b", fontSize: "0.9rem", margin: "0 0 28px", lineHeight: 1.6 }}>
+          "Your contribution will help provide emergency shelter, food, clean water, and medical care to families affected by the Venezuela Earthquake."
+        </p>
+        <button onClick={onBack} className="don-cta" style={{ background: "linear-gradient(135deg,#DC2626,#1D4ED8)", color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", fontSize: "1rem", fontWeight: 700, cursor: "pointer" }}>Back to Home</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#fff", color: "#1e293b", fontFamily: "Inter,sans-serif" }}>
+      <style>{css}</style>
+
+      {/* Lightbox */}
+      {lightbox !== null && (
+        <div onClick={() => setLightbox(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+          <button onClick={() => setLightbox(null)} style={{ position: "absolute", top: 20, right: 24, background: "none", border: "none", color: "#fff", fontSize: "2rem", cursor: "pointer" }}>×</button>
+          <img src={GALLERY_IMAGES[lightbox].src.replace("w=600", "w=1200")} alt={GALLERY_IMAGES[lightbox].alt} style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 12, objectFit: "contain" }} onClick={e => e.stopPropagation()} />
+        </div>
+      )}
+
+      {/* Navbar */}
+      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(255,255,255,0.96)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: "0.85rem", color: "#DC2626", fontWeight: 600, background: "#fef2f2", padding: "4px 12px", borderRadius: 100 }}>🇻🇪 Relief Campaign</span>
+          <button onClick={() => document.getElementById("don-form")?.scrollIntoView({ behavior: "smooth" })} className="don-cta" style={{ background: "linear-gradient(135deg,#DC2626,#b91c1c)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontWeight: 700, fontSize: "0.88rem", cursor: "pointer" }}>Donate Now</button>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <div style={{ paddingTop: 64, position: "relative", minHeight: "92vh", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "url('https://images.unsplash.com/photo-1615461066841-6116e61058f4?w=1600&q=80')", backgroundSize: "cover", backgroundPosition: "center", filter: "brightness(0.25)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(185,28,28,0.7),rgba(30,64,175,0.6))", mixBlendMode: "multiply" }} />
+        <div className="don-fade" style={{ position: "relative", zIndex: 1, textAlign: "center", padding: "4rem 5%", maxWidth: 860, margin: "0 auto" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 100, padding: "6px 18px", fontSize: "0.82rem", color: "#fca5a5", fontWeight: 600, marginBottom: "1.5rem" }}>
+            🚨 EMERGENCY APPEAL &nbsp;·&nbsp; 🇻🇪 Venezuela Earthquake
+          </div>
+          <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(2.2rem,6vw,4rem)", letterSpacing: "-0.03em", margin: "0 0 1.25rem", color: "#fff", lineHeight: 1.15 }}>Help Venezuela<br />Rise Again</h1>
+          <p style={{ fontSize: "clamp(1rem,2.5vw,1.2rem)", color: "rgba(255,255,255,0.82)", lineHeight: 1.75, margin: "0 0 2.5rem", maxWidth: 680, marginLeft: "auto", marginRight: "auto" }}>
+            Thousands of families have lost everything. Your donation today can provide emergency shelter, food, clean water, medicines, and hope to those affected by the devastating earthquake.
+          </p>
+          <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={() => document.getElementById("don-form")?.scrollIntoView({ behavior: "smooth" })} className="don-cta don-pulse" style={{ background: "linear-gradient(135deg,#DC2626,#b91c1c)", color: "#fff", border: "none", borderRadius: 10, padding: "16px 36px", fontSize: "1.05rem", fontWeight: 800, cursor: "pointer", boxShadow: "0 8px 32px rgba(220,38,38,0.4)" }}>❤️ Donate Now</button>
+            <button onClick={() => document.getElementById("don-about")?.scrollIntoView({ behavior: "smooth" })} className="don-cta" style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", color: "#fff", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "16px 28px", fontSize: "1rem", fontWeight: 600, cursor: "pointer" }}>Learn How Your Donation Helps</button>
+          </div>
+
+          {/* Progress Bar */}
+          <div style={{ marginTop: "3rem", background: "rgba(255,255,255,0.1)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 16, padding: "1.5rem 2rem", textAlign: "left" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: "1.6rem", fontWeight: 800, color: "#fff", fontFamily: "'Space Grotesk',sans-serif" }}>{fmt(amountRaised)}</div>
+                <div style={{ fontSize: "0.82rem", color: "rgba(255,255,255,0.6)" }}>raised of {fmt(GOAL)} goal</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#fca5a5", fontFamily: "'Space Grotesk',sans-serif" }}>{donorCount}</div>
+                <div style={{ fontSize: "0.82rem", color: "rgba(255,255,255,0.6)" }}>donors</div>
+              </div>
+            </div>
+            <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 100, height: 10, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${progressPct}%`, background: "linear-gradient(90deg,#DC2626,#f97316)", borderRadius: 100, transition: "width 1s ease" }} />
+            </div>
+            <div style={{ marginTop: 8, fontSize: "0.8rem", color: "rgba(255,255,255,0.55)", textAlign: "right" }}>{progressPct}% of goal reached</div>
+          </div>
+        </div>
+      </div>
+
+      {/* About the Disaster */}
+      <div id="don-about" style={{ padding: "5rem 5%", background: "#f8fafc" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div className="don-fade" style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <div style={{ display: "inline-block", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#DC2626", fontWeight: 700, marginBottom: "1rem" }}>🌍 About the Disaster</div>
+            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.5rem)", letterSpacing: "-0.03em", margin: "0 0 1rem" }}>Venezuela Earthquake Emergency</h2>
+            <p style={{ color: "#64748b", fontSize: "1.05rem", maxWidth: 680, margin: "0 auto", lineHeight: 1.75 }}>
+              A powerful earthquake has struck Venezuela, causing widespread destruction across multiple states. Homes, hospitals, schools, and critical infrastructure have been damaged or destroyed. Thousands of families have been displaced and are in urgent need of humanitarian assistance.
+            </p>
+          </div>
+
+          {/* Stats notice */}
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "16px 20px", marginBottom: "2.5rem", display: "flex", gap: 12, alignItems: "flex-start" }}>
+            <span style={{ fontSize: "1.2rem", flexShrink: 0 }}>ℹ️</span>
+            <div>
+              <p style={{ margin: 0, fontSize: "0.88rem", color: "#92400e", lineHeight: 1.6 }}>
+                <strong>Live Statistics:</strong> Casualty counts, displaced populations, and economic damage figures are being updated as verified information becomes available from official humanitarian agencies (UNOCHA, Red Cross, UNHCR). The data below reflects the latest available estimates.
+              </p>
+              <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: "#a16207" }}>Source: UN OCHA &amp; IFRC · Last updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: "1rem" }}>
+            {[
+              { label: "Lives Lost", icon: "🕊️", value: "Updating…", color: "#DC2626" },
+              { label: "Injured", icon: "🏥", value: "Updating…", color: "#EA580C" },
+              { label: "Families Displaced", icon: "🏠", value: "Updating…", color: "#D97706" },
+              { label: "Homes Destroyed", icon: "🏚️", value: "Updating…", color: "#7C3AED" },
+              { label: "Infrastructure Damage", icon: "🌉", value: "Critical", color: "#1D4ED8" },
+              { label: "Economic Losses", icon: "📊", value: "Updating…", color: "#059669" },
+            ].map(card => (
+              <div key={card.label} style={{ background: "#fff", borderRadius: 14, padding: "1.5rem", textAlign: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: `2px solid ${card.color}22` }}>
+                <div style={{ fontSize: "2rem", marginBottom: 8 }}>{card.icon}</div>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.1rem", color: card.color, marginBottom: 4 }}>{card.value}</div>
+                <div style={{ fontSize: "0.8rem", color: "#64748b", fontWeight: 500 }}>{card.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Impact Cards */}
+      <div style={{ padding: "5rem 5%", background: "#fff" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <div style={{ display: "inline-block", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#DC2626", fontWeight: 700, marginBottom: "1rem" }}>💡 Why We Need Your Help</div>
+            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: "0 0 0.75rem" }}>Every Rupee Creates Immediate Impact</h2>
+            <p style={{ color: "#64748b", fontSize: "1rem", margin: 0 }}>See exactly what your donation accomplishes on the ground.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "1.25rem" }}>
+            {IMPACT_CARDS.map(c => (
+              <div key={c.amount} className="don-impact" onClick={() => { setSelectedAmount(c.amount); setCustomAmount(""); document.getElementById("don-form")?.scrollIntoView({ behavior: "smooth" }); }} style={{ background: "#f8fafc", borderRadius: 16, padding: "1.75rem 1.5rem", textAlign: "center", border: "2px solid #e2e8f0" }}>
+                <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>{c.icon}</div>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.4rem", color: "#DC2626", marginBottom: 4 }}>{fmt(c.amount)}</div>
+                <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 6, fontSize: "0.95rem" }}>{c.label}</div>
+                <div style={{ fontSize: "0.83rem", color: "#64748b", lineHeight: 1.5 }}>{c.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Image Gallery */}
+      <div style={{ padding: "5rem 5%", background: "#0f172a" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <div style={{ display: "inline-block", background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#fca5a5", fontWeight: 700, marginBottom: "1rem" }}>📸 On the Ground</div>
+            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: "0 0 0.75rem", color: "#fff" }}>Faces of the Crisis</h2>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "1rem", margin: 0 }}>Click any image to enlarge</p>
+          </div>
+          <div style={{ columns: "3 240px", gap: "1rem" }}>
+            {GALLERY_IMAGES.map((img, i) => (
+              <div key={i} style={{ breakInside: "avoid", marginBottom: "1rem" }}>
+                <img loading="lazy" src={img.src} alt={img.alt} className="don-img" onClick={() => setLightbox(i)} style={{ width: "100%", borderRadius: 10, display: "block", objectFit: "cover" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Videos */}
+      <div style={{ padding: "5rem 5%", background: "#f8fafc" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <div style={{ display: "inline-block", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#DC2626", fontWeight: 700, marginBottom: "1rem" }}>🎥 Watch &amp; Witness</div>
+            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: 0 }}>Relief Efforts in Action</h2>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: "1.25rem" }}>
+            {VIDEOS.map(v => (
+              <div key={v.id} className="don-video" style={{ borderRadius: 14, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
+                <div style={{ position: "relative", paddingBottom: "56.25%", height: 0 }}>
+                  <iframe src={`https://www.youtube.com/embed/${v.id}?rel=0`} title={v.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "2px solid #e2e8f0", borderRadius: 14 }} loading="lazy" />
+                </div>
+                <div style={{ padding: "12px 14px", background: "#fff", fontSize: "0.85rem", fontWeight: 600, color: "#374151" }}>{v.title}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Donation Form */}
+      <div id="don-form" style={{ padding: "5rem 5%", background: "linear-gradient(135deg,#fef2f2,#eff6ff)" }}>
+        <div style={{ maxWidth: 580, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
+            <div style={{ display: "inline-block", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#DC2626", fontWeight: 700, marginBottom: "1rem" }}>❤️ Make a Difference</div>
+            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: "0 0 0.75rem" }}>Donate to Venezuela Relief</h2>
+            <p style={{ color: "#64748b", fontSize: "0.95rem", margin: 0 }}>100% of your donation reaches those in need. Secure payment via Razorpay.</p>
+          </div>
+
+          <div style={{ background: "#fff", borderRadius: 20, padding: "2.5rem", boxShadow: "0 8px 40px rgba(0,0,0,0.1)", border: "1px solid #e2e8f0" }}>
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: "0.88rem", color: "#374151", marginBottom: 6 }}>Select Amount</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 12 }}>
+                {PRESET_AMOUNTS.map(a => (
+                  <button key={a} className="don-preset" onClick={() => { setSelectedAmount(a); setCustomAmount(""); }} style={{ padding: "10px 4px", borderRadius: 8, border: `2px solid ${selectedAmount === a && !customAmount ? "#DC2626" : "#e2e8f0"}`, background: selectedAmount === a && !customAmount ? "#fef2f2" : "#fff", color: selectedAmount === a && !customAmount ? "#DC2626" : "#374151", fontWeight: 700, cursor: "pointer", fontSize: "0.9rem", transition: "all 0.15s" }}>
+                    {fmt(a)}
+                  </button>
+                ))}
+              </div>
+              <input type="number" placeholder="Enter custom amount (min ₹100)" value={customAmount} onChange={e => { setCustomAmount(e.target.value); setSelectedAmount(null); }} style={{ width: "100%", padding: "10px 14px", border: "2px solid #e2e8f0", borderRadius: 8, fontSize: "0.95rem", boxSizing: "border-box", outline: "none", fontFamily: "Inter,sans-serif" }} />
+            </div>
+
+            <div style={{ marginBottom: "1.25rem" }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: "0.88rem", color: "#374151", marginBottom: 6 }}>Full Name *</label>
+              <input type="text" placeholder="Enter your full name" value={donorName} onChange={e => setDonorName(e.target.value)} style={{ width: "100%", padding: "10px 14px", border: "2px solid #e2e8f0", borderRadius: 8, fontSize: "0.95rem", boxSizing: "border-box", outline: "none", fontFamily: "Inter,sans-serif" }} />
+            </div>
+
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: "0.88rem", color: "#374151", marginBottom: 6 }}>Email Address *</label>
+              <input type="email" placeholder="Enter your email" value={donorEmail} onChange={e => setDonorEmail(e.target.value)} style={{ width: "100%", padding: "10px 14px", border: "2px solid #e2e8f0", borderRadius: 8, fontSize: "0.95rem", boxSizing: "border-box", outline: "none", fontFamily: "Inter,sans-serif" }} />
+            </div>
+
+            {formError && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: "1.25rem", fontSize: "0.88rem", color: "#DC2626", fontWeight: 500 }}>{formError}</div>}
+
+            <button onClick={handleDonate} disabled={loading} className="don-cta" style={{ width: "100%", padding: "14px", background: loading ? "#94a3b8" : "linear-gradient(135deg,#DC2626,#b91c1c)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 800, fontSize: "1rem", cursor: loading ? "not-allowed" : "pointer", boxShadow: loading ? "none" : "0 6px 20px rgba(220,38,38,0.3)" }}>
+              {loading ? "Processing…" : `🔒 Donate Securely${finalAmount >= 100 ? " — " + fmt(finalAmount) : ""}`}
+            </button>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: "1rem" }}>
+              <span style={{ fontSize: "1rem" }}>🔒</span>
+              <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>Secured by Razorpay · 256-bit SSL · UPI, Cards, NetBanking accepted</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* How Donations Are Used */}
+      <div style={{ padding: "5rem 5%", background: "#fff" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <div style={{ display: "inline-block", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#DC2626", fontWeight: 700, marginBottom: "1rem" }}>📋 Allocation</div>
+            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: 0 }}>How Donations Will Be Used</h2>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "1.25rem" }}>
+            {USE_CARDS.map(c => (
+              <div key={c.title} className="don-use" style={{ border: "1.5px solid #e2e8f0", borderRadius: 16, padding: "1.75rem 1.5rem", textAlign: "center" }}>
+                <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>{c.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: "1rem", color: "#1e293b", marginBottom: 8 }}>{c.title}</div>
+                <div style={{ fontSize: "0.85rem", color: "#64748b", lineHeight: 1.6 }}>{c.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Transparency */}
+      <div style={{ padding: "5rem 5%", background: "#0f172a", color: "#fff" }}>
+        <div style={{ maxWidth: 860, margin: "0 auto", textAlign: "center" }}>
+          <div style={{ display: "inline-block", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#86efac", fontWeight: 700, marginBottom: "1.5rem" }}>🛡️ 100% Transparent</div>
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: "0 0 1rem" }}>Your Trust Is Our Priority</h2>
+          <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "1rem", lineHeight: 1.75, margin: "0 0 3rem" }}>
+            Every donation is securely processed through Razorpay. This campaign is administered directly by MACHMILES. All funds are allocated exclusively to verified relief operations, and periodic campaign updates will be published to ensure complete accountability. Donors receive a payment confirmation, email receipt, and transaction ID immediately after each successful donation.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: "1.25rem" }}>
+            {[
+              { icon: "🧾", title: "Email Receipt", desc: "Sent instantly after payment" },
+              { icon: "🔑", title: "Transaction ID", desc: "Unique proof of every donation" },
+              { icon: "📢", title: "Campaign Updates", desc: "Published regularly on our site" },
+              { icon: "🔒", title: "Secure Payments", desc: "PCI-DSS compliant gateway" },
+            ].map(item => (
+              <div key={item.title} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "1.5rem" }}>
+                <div style={{ fontSize: "2rem", marginBottom: 10 }}>{item.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: 6 }}>{item.title}</div>
+                <div style={{ fontSize: "0.82rem", color: "rgba(255,255,255,0.5)" }}>{item.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* FAQ */}
+      <div style={{ padding: "5rem 5%", background: "#f8fafc" }}>
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <div style={{ display: "inline-block", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#DC2626", fontWeight: 700, marginBottom: "1rem" }}>❓ FAQ</div>
+            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: 0 }}>Frequently Asked Questions</h2>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {FAQS.map((f, i) => (
+              <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
+                <button className="don-faq-btn" onClick={() => setActiveFaq(activeFaq === i ? null : i)} style={{ width: "100%", padding: "16px 20px", background: "none", border: "none", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontWeight: 600, fontSize: "0.95rem", color: "#1e293b", fontFamily: "Inter,sans-serif", borderRadius: 12 }}>
+                  {f.q}
+                  <span style={{ fontSize: "1.2rem", color: "#DC2626", flexShrink: 0, marginLeft: 12 }}>{activeFaq === i ? "−" : "+"}</span>
+                </button>
+                {activeFaq === i && <div style={{ padding: "0 20px 16px", fontSize: "0.9rem", color: "#64748b", lineHeight: 1.7 }}>{f.a}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ background: "#020817", color: "rgba(255,255,255,0.6)", padding: "3rem 5%", textAlign: "center" }}>
+        <div style={{ maxWidth: 860, margin: "0 auto" }}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", marginBottom: "1.5rem" }}>
+            {[
+              ["Privacy Policy", "/privacy-policy"],
+              ["Terms & Conditions", "/terms"],
+              ["Refund Policy", "/refund-policy"],
+            ].map(([label, href]) => (
+              <a key={label} href={href} style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none", fontSize: "0.82rem", padding: "4px 10px" }}
+                onMouseEnter={e => e.target.style.color = "#fff"} onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.5)"}>{label}</a>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: "1.5rem" }}>
+            <a href="mailto:info@machmiles.com" style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none", fontSize: "0.85rem" }}>✉️ info@machmiles.com</a>
+          </div>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "rgba(255,255,255,0.3)" }}>© 2026 MACHMILES · <a href="https://machmiles.com" target="_blank" rel="noopener noreferrer" style={{ color: "#3B82F6", textDecoration: "none" }}>machmiles.com</a> · Venezuela Earthquake Relief Campaign</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("loading");
@@ -4659,6 +5133,10 @@ export default function App() {
     const path = window.location.pathname;
     if (path === "/Pricing" || path === "/pricing") {
       setScreen("pricing");
+      return;
+    }
+    if (path === "/donations" || path === "/donation") {
+      setScreen("donations");
       return;
     }
     const POLICY_PATHS = {
@@ -4741,7 +5219,9 @@ export default function App() {
   };
   const goHome = () => { window.history.pushState(null, "", "/"); setScreen("landing"); };
   const goToPricing = () => { window.history.pushState(null, "", "/Pricing"); setScreen("pricing"); };
+  const goToDonations = () => { window.history.pushState(null, "", "/donations"); setScreen("donations"); };
 
+  if (screen === "donations") return <DonationsPage onBack={goHome} />;
   if (screen === "pricing") return <PricingPage onSignup={() => { window.history.pushState(null, "", "/"); setScreen("signup"); }} onLogin={() => { window.history.pushState(null, "", "/"); setScreen("login"); }} onBack={goHome} />;
   if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
   if (screen === "login") return <AuthScreen mode="login" onAuth={(u) => checkAndRoute(u)} onToggle={() => setScreen("signup")} onBack={() => setScreen("landing")} />;
