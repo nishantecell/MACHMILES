@@ -41,7 +41,7 @@ async function sendWelcomeEmail(email, name) {
     <p style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.6">Many of our users upgrade when they're actively job hunting because it allows them to apply consistently without spending hours every day.</p>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.6">There's absolutely no rush—you can explore the platform first and upgrade whenever you're ready.</p>
     <div style="text-align:center;margin:0 0 32px">
-      <a href="https://machmiles.com/Pricing" style="display:inline-block;background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 36px;border-radius:10px">👉 Upgrade whenever you're ready</a>
+      <a href="https://machmiles.com/pricing" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 36px;border-radius:10px">👉 Upgrade whenever you're ready</a>
     </div>
 
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 24px">
@@ -124,23 +124,52 @@ export default async function handler(req, res) {
   // --- Register ---
   if (!name || !email || !password) return badReq(res, 'Name, email and password are required');
   if (password.length < 6) return badReq(res, 'Password must be at least 6 characters');
+  const cleanedEmail = email.trim().toLowerCase();
+  const cleanedPhone = (phone || '').replace(/\D/g, '');
   try {
+    let userId;
+    let isNew = true;
+
     const { data, error } = await supabase.auth.admin.createUser({
-      email: email.trim().toLowerCase(), password, email_confirm: true,
+      email: cleanedEmail, password, email_confirm: true,
       user_metadata: { full_name: name.trim() },
     });
+
     if (error) {
-      if (error.message.includes('already registered') || error.message.includes('already been registered'))
-        return res.status(409).json({ success: false, message: 'An account with this email already exists' });
-      throw error;
+      const alreadyExists = error.message.includes('already registered') || error.message.includes('already been registered');
+      if (!alreadyExists) throw error;
+
+      // Auth user exists — check if a profile row also exists
+      const { data: authList } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      const existingAuth = (authList?.users || []).find(u => u.email === cleanedEmail);
+      if (!existingAuth) return res.status(409).json({ success: false, message: 'An account with this email already exists' });
+
+      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', existingAuth.id).single();
+      if (existingProfile) {
+        // Full account exists — tell user to sign in
+        return res.status(409).json({ success: false, message: 'An account with this email already exists. Please sign in instead.' });
+      }
+
+      // Auth user exists but profile was deleted — reset password and recreate profile
+      await supabase.auth.admin.updateUserById(existingAuth.id, {
+        password,
+        user_metadata: { full_name: name.trim() },
+        email_confirm: true,
+      });
+      userId = existingAuth.id;
+      isNew = false;
+    } else {
+      userId = data.user.id;
     }
-    const cleanedPhone = (phone || '').replace(/\D/g, '');
+
     await supabase.from('profiles').upsert({
-      id: data.user.id, full_name: name.trim(),
-      email: email.trim().toLowerCase(), phone: cleanedPhone || null, plan: 'free', onboarded: false,
+      id: userId, full_name: name.trim(),
+      email: cleanedEmail, phone: cleanedPhone || null, plan: 'free', onboarded: false,
     });
-    await sendWelcomeEmail(email.trim().toLowerCase(), name.trim());
-    return res.status(201).json({ success: true, message: 'Account created successfully!', data: { userId: data.user.id, email: data.user.email } });
+
+    if (isNew) await sendWelcomeEmail(cleanedEmail, name.trim());
+
+    return res.status(201).json({ success: true, message: 'Account created successfully!', data: { userId, email: cleanedEmail } });
   } catch (e) {
     console.error('Register error:', e.message);
     return err(res, e.message);
