@@ -4718,10 +4718,10 @@ function DonationsPage({ onBack }) {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/donations/create-order", {
+      const res = await fetch("/api/donations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: finalAmount, name: donorName.trim(), email: donorEmail.trim() }),
+        body: JSON.stringify({ action: "create-order", amount: finalAmount, name: donorName.trim(), email: donorEmail.trim() }),
       });
       const data = await res.json();
       if (!data.success) { setFormError(data.message || "Failed to create order."); setLoading(false); return; }
@@ -4737,10 +4737,11 @@ function DonationsPage({ onBack }) {
         theme: { color: "#DC2626" },
         handler: async (response) => {
           try {
-            const verify = await fetch("/api/donations/verify", {
+            const verify = await fetch("/api/donations", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
+                action: "verify",
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,

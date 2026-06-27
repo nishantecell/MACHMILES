@@ -1,10 +1,11 @@
 import crypto from 'crypto';
+import Razorpay from 'razorpay';
 import { createClient } from '@supabase/supabase-js';
 import { handleCors, ok, badReq, err } from '../_lib/helpers.js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-async function sendThankYouEmail(name, email, amount, paymentId, orderId) {
+async function sendThankYouEmail(name, email, amount, paymentId) {
   if (!process.env.RESEND_API_KEY) return;
   const firstName = name.split(' ')[0];
   const date = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -36,13 +37,11 @@ async function sendThankYouEmail(name, email, amount, paymentId, orderId) {
         <tr><td style="padding:6px 0;font-size:13px;color:#64748b">Date</td><td style="padding:6px 0;font-size:13px;color:#1e293b;font-weight:600">${date}</td></tr>
       </table>
     </div>
-    <p style="margin:0 0 16px;font-size:15px;color:#475569;line-height:1.7">Every donation brings hope to families affected by this disaster. Together, we rebuild lives.</p>
     <p style="margin:0 0 4px;font-size:14px;color:#475569">With deep gratitude,</p>
     <p style="margin:0;font-size:14px;color:#1e293b;font-weight:700">The Relief Team<br><span style="font-weight:400;color:#64748b">Venezuela Earthquake Relief Campaign</span></p>
   </div>
   <div style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0">
-    <p style="margin:0;font-size:12px;color:#94a3b8">This is an automated donation receipt. Please keep it for your records.</p>
-    <p style="margin:8px 0 0;font-size:12px;color:#94a3b8">© 2026 MACHMILES · <a href="https://machmiles.com" style="color:#3B82F6;text-decoration:none">machmiles.com</a></p>
+    <p style="margin:0;font-size:12px;color:#94a3b8">© 2026 MACHMILES · <a href="https://machmiles.com" style="color:#3B82F6;text-decoration:none">machmiles.com</a></p>
   </div>
 </div>
 </body></html>`;
@@ -67,33 +66,58 @@ export default async function handler(req, res) {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') return badReq(res, 'Method not allowed');
 
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, name, email, amount } = req.body || {};
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) return badReq(res, 'Missing payment fields');
-  if (!name || !email || !amount) return badReq(res, 'Missing donor details');
+  const { action } = req.body || {};
 
-  const expected = crypto
-    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-    .digest('hex');
+  // --- Create Order ---
+  if (action === 'create-order') {
+    const { amount, name, email } = req.body;
+    if (!name || !email) return badReq(res, 'Name and email are required');
+    if (!amount || amount < 100) return badReq(res, 'Minimum donation amount is ₹100');
 
-  if (expected !== razorpay_signature) return badReq(res, 'Payment verification failed');
-
-  try {
-    await supabase.from('donations').insert({
-      name,
-      email,
-      amount,
-      razorpay_payment_id,
-      razorpay_order_id,
-      campaign: 'Venezuela Earthquake Relief',
-      created_at: new Date().toISOString(),
-    });
-
-    await sendThankYouEmail(name, email, amount, razorpay_payment_id, razorpay_order_id);
-
-    return ok(res, { payment_id: razorpay_payment_id }, 'Donation verified. Thank you!');
-  } catch (e) {
-    console.error('Donation verify error:', e.message);
-    return err(res, 'Failed to process donation');
+    try {
+      const razorpay = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+      });
+      const order = await razorpay.orders.create({
+        amount: Math.round(amount * 100),
+        currency: 'INR',
+        receipt: `donation_${Date.now()}`,
+        notes: { donor_name: name, donor_email: email, campaign: 'Venezuela Earthquake Relief' },
+      });
+      return ok(res, { order_id: order.id, amount: order.amount, currency: 'INR', key_id: process.env.RAZORPAY_KEY_ID });
+    } catch (e) {
+      console.error('Donation order error:', e.message);
+      return err(res, 'Failed to create donation order');
+    }
   }
+
+  // --- Verify Payment ---
+  if (action === 'verify') {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, name, email, amount } = req.body;
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) return badReq(res, 'Missing payment fields');
+    if (!name || !email || !amount) return badReq(res, 'Missing donor details');
+
+    const expected = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (expected !== razorpay_signature) return badReq(res, 'Payment verification failed');
+
+    try {
+      await supabase.from('donations').insert({
+        name, email, amount, razorpay_payment_id, razorpay_order_id,
+        campaign: 'Venezuela Earthquake Relief',
+        created_at: new Date().toISOString(),
+      });
+      await sendThankYouEmail(name, email, amount, razorpay_payment_id);
+      return ok(res, { payment_id: razorpay_payment_id }, 'Donation verified. Thank you!');
+    } catch (e) {
+      console.error('Donation verify error:', e.message);
+      return err(res, 'Failed to process donation');
+    }
+  }
+
+  return badReq(res, 'Invalid action');
 }
