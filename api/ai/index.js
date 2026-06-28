@@ -44,9 +44,15 @@ async function tryGemini(systemPrompt, messages, maxTokens) {
     contents.unshift({ role: 'user', parts: [{ text: 'Hello' }] });
   }
 
+  // Prepend system prompt as first user turn (most compatible approach)
+  const fullContents = [
+    { role: 'user', parts: [{ text: systemPrompt }] },
+    { role: 'model', parts: [{ text: 'Understood. I will follow these instructions.' }] },
+    ...contents,
+  ];
+
   const body = {
-    system_instruction: { role: 'user', parts: [{ text: systemPrompt }] },
-    contents,
+    contents: fullContents,
     generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
   };
 
@@ -96,7 +102,8 @@ export default async function handler(req, res) {
     const noKeys = openaiErr.includes('NO_OPENAI_KEY') && geminiErr.includes('NO_GEMINI_KEY');
     if (noKeys) return res.status(503).json({ success: false, message: 'AI service not configured. Please contact support.' });
     console.error('Both AI providers failed. OpenAI:', openaiErr, 'Gemini:', geminiErr);
-    return res.status(503).json({ success: false, message: 'AI service is temporarily unavailable. Please try again in a moment.' });
+    // Return debug info so we can diagnose from the UI
+    return res.status(503).json({ success: false, message: `AI unavailable — OpenAI: ${openaiErr.slice(0,80)} | Gemini: ${geminiErr.slice(0,80)}` });
   }
 
   return res.status(200).json({ success: true, content });
