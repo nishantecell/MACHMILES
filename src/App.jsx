@@ -1052,6 +1052,7 @@ function Onboarding({ user, onComplete }) {
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [uploadedName, setUploadedName] = useState("");
+  const [resumeChosen, setResumeChosen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [goToResume, setGoToResume] = useState(false);
 
@@ -1074,7 +1075,7 @@ function Onboarding({ user, onComplete }) {
       const parsed = await parseResumeWithAI(text);
       const title = (parsed?.basics?.name || file.name.replace(/\.[^.]+$/, "")) + " — Resume";
       const res = await apiPost("/resumes", { title, template: "classic", resume_data: parsed || {} });
-      if (res.success || res.data) { setUploaded(true); setUploadedName(file.name); }
+      if (res.success || res.data) { setUploaded(true); setUploadedName(file.name); setResumeChosen(true); }
       else alert("Upload failed: " + (res.message || "Unknown error"));
     } catch (err) {
       alert("Upload failed: " + err.message);
@@ -1110,9 +1111,10 @@ function Onboarding({ user, onComplete }) {
             <div style={{ textAlign: "center", marginTop: "1.25rem" }}>
               <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.85rem" }}>— or —</span>
             </div>
-            <button onClick={() => complete(true)} style={{ width: "100%", marginTop: "1rem", padding: "14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, color: "rgba(255,255,255,0.8)", fontWeight: 600, fontSize: "0.95rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <button onClick={() => { setResumeChosen(true); complete(true); }} style={{ width: "100%", marginTop: "1rem", padding: "14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, color: "rgba(255,255,255,0.8)", fontWeight: 600, fontSize: "0.95rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
               ✏️ Create your own resume with templates
             </button>
+            {!resumeChosen && <p style={{ textAlign: "center", color: "#f87171", fontSize: "0.82rem", marginTop: "1rem" }}>Please upload your resume or choose to create one before continuing.</p>}
           </div>
         )}
 
@@ -1156,7 +1158,7 @@ function Onboarding({ user, onComplete }) {
 
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2rem" }}>
           <button onClick={() => step > 1 && setStep(s => s-1)} style={{ background: "transparent", border: step === 1 ? "none" : "1px solid rgba(255,255,255,0.12)", color: step === 1 ? "transparent" : "rgba(255,255,255,0.6)", borderRadius: 10, padding: "12px 24px", cursor: step === 1 ? "default" : "pointer" }}>Back</button>
-          <button onClick={() => step < 3 ? setStep(s => s+1) : complete()} disabled={saving} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "12px 32px", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => { if (step === 1 && !resumeChosen) return; step < 3 ? setStep(s => s+1) : complete(); }} disabled={saving || (step === 1 && !resumeChosen)} style={{ background: step === 1 && !resumeChosen ? "rgba(255,255,255,0.1)" : "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: step === 1 && !resumeChosen ? "rgba(255,255,255,0.3)" : "#fff", borderRadius: 10, padding: "12px 32px", cursor: step === 1 && !resumeChosen ? "not-allowed" : "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
             {saving && <Spinner />}{step === 3 ? "Launch AutoApply AI 🚀" : "Continue →"}
           </button>
         </div>
