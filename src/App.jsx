@@ -799,7 +799,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
                   ["in", "https://www.linkedin.com/company/machmiles/", "#0A66C2"],
                   ["f", "https://facebook.com", "#1877F2"],
                   ["ig", "https://www.instagram.com/mach.miles?igsh=dWN0dzBlZGZjZWNn", "#E1306C"],
-                  ["tk", "https://tiktok.com", "#fff"],
+                  ["𝕏", "https://x.com/machmilesai?ct=b25ib2FyZGluZ193ZWxjb21l&ppid=email-push-service", "#fff"],
                 ].map(([icon, href, color]) => (
                   <a key={icon} href={href} target="_blank" rel="noopener noreferrer" style={{ width: 34, height: 34, background: "rgba(255,255,255,0.1)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none" }}>{icon}</a>
                 ))}
