@@ -460,7 +460,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
         <div style={{ display: "flex", gap: 2, alignItems: "center", flex: 1, justifyContent: "center", flexWrap: "nowrap", overflow: "hidden" }}>
           {[
             ["Features", () => document.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })],
-            ["How It Works", () => document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })],
+            ["How It Works", () => document.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })],
             ["FAQ", () => document.querySelector("#faq")?.scrollIntoView({ behavior: "smooth" })],
           ].map(([label, action]) => (
             <button key={label} onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif" }}
