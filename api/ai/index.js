@@ -4,7 +4,7 @@ const SYSTEM_CHAT = 'You are an expert AI career coach specializing in tech job 
 const SYSTEM_INTERVIEW = 'You are an expert technical interviewer and career coach. Provide strong, structured interview answers. Use the STAR method for behavioral questions. Keep answers under 150 words, clear and impactful.';
 
 async function tryOpenAI(systemPrompt, messages, maxTokens) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_KEY;
   if (!apiKey) throw new Error('NO_OPENAI_KEY');
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -28,7 +28,7 @@ async function tryOpenAI(systemPrompt, messages, maxTokens) {
 }
 
 async function tryGemini(systemPrompt, messages, maxTokens) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_KEY;
   if (!apiKey) throw new Error('NO_GEMINI_KEY');
 
   // Gemini requires alternating user/model turns starting with user.
