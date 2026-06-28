@@ -115,28 +115,24 @@ async function generateCoverLetter(jobTitle, company, skills) {
   return callOpenAI([{ role: "user", content: prompt }], 400);
 }
 
-// ─── OPENAI HELPERS ───────────────────────────────────────────────────────────
-async function callOpenAI(messages, maxTokens = 500) {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+// ─── AI HELPERS (via backend) ─────────────────────────────────────────────────
+async function callAI(messages, mode = "chat") {
+  const res = await fetch("/api/ai", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
-    body: JSON.stringify({ model: "gpt-4o-mini", messages, max_tokens: maxTokens }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, mode }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `OpenAI error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) throw new Error(data.message || "AI service unavailable");
+  return data.content || "";
 }
 
 async function analyzeResume(resumeText) {
-  return callOpenAI([{ role: "user", content: `Analyze this resume and provide: 1) ATS score out of 100, 2) Top 3 improvements, 3) Missing keywords for tech roles. Resume: ${resumeText.slice(0, 1000)}. Format as JSON: {"score": number, "improvements": ["..."], "keywords": ["..."]}` }], 300);
+  return callAI([{ role: "user", content: `Analyze this resume and provide: 1) ATS score out of 100, 2) Top 3 improvements, 3) Missing keywords for tech roles. Resume: ${resumeText.slice(0, 1000)}. Format as JSON: {"score": number, "improvements": ["..."], "keywords": ["..."]}` }]);
 }
 
-async function chatWithAI(messages) {
-  const systemMsg = { role: "system", content: "You are an expert AI career coach specializing in tech job searches in India. Help with resume advice, interview prep, salary negotiation, and career guidance. Be concise and actionable." };
-  return callOpenAI([systemMsg, ...messages], 400);
+async function chatWithAI(messages, mode = "chat") {
+  return callAI(messages, mode);
 }
 
 // ── Parse resume PDF/text → structured data via PDF.js + OpenAI ──────────────
@@ -4051,17 +4047,12 @@ function InterviewPage() {
   ];
 
   const generateAnswer = async (q, i) => {
-    if (!OPENAI_KEY) { setAnswers(prev => ({ ...prev, [i]: "⚠ OpenAI key not configured. Add VITE_OPENAI_KEY in Vercel environment variables to enable AI answers." })); return; }
     setGeneratingAnswer(i);
     try {
-      const answer = await chatWithAI([{ role: "user", content: `Give a strong interview answer for: "${q.q}". Use STAR method if behavioral. Be concise (150 words max).` }]);
+      const answer = await chatWithAI([{ role: "user", content: `Give a strong interview answer for: "${q.q}". Use STAR method if behavioral. Be concise (150 words max).` }], "interview");
       setAnswers(prev => ({ ...prev, [i]: answer || "No response received. Please try again." }));
     } catch (e) {
-      const msg = e.message || "";
-      const friendly = msg.includes("quota") || msg.includes("billing") || msg.includes("429")
-        ? "⚠ AI service is temporarily unavailable. Our team has been notified — please try again later."
-        : "⚠ Failed to generate answer. Please try again.";
-      setAnswers(prev => ({ ...prev, [i]: friendly }));
+      setAnswers(prev => ({ ...prev, [i]: `⚠ ${e.message || "Failed to generate answer. Please try again."}` }));
     }
     setGeneratingAnswer(null);
   };
@@ -4115,8 +4106,12 @@ function AssistantPage() {
     setMessages(m => [...m, userMsg]);
     setInput("");
     setLoading(true);
-    const reply = await chatWithAI([...messages, userMsg]);
-    setMessages(m => [...m, { role: "assistant", content: reply }]);
+    try {
+      const reply = await chatWithAI([...messages, userMsg]);
+      setMessages(m => [...m, { role: "assistant", content: reply || "Sorry, I didn't get a response. Please try again." }]);
+    } catch (e) {
+      setMessages(m => [...m, { role: "assistant", content: `⚠ ${e.message || "Something went wrong. Please try again."}` }]);
+    }
     setLoading(false);
   };
 
