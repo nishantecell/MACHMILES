@@ -460,7 +460,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
         <div style={{ display: "flex", gap: 2, alignItems: "center", flex: 1, justifyContent: "center", flexWrap: "nowrap", overflow: "hidden" }}>
           {[
             ["Features", () => document.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })],
-            ["How It Works", () => document.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })],
+            ["How It Works", () => document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })],
             ["FAQ", () => document.querySelector("#faq")?.scrollIntoView({ behavior: "smooth" })],
           ].map(([label, action]) => (
             <button key={label} onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif" }}
@@ -715,6 +715,29 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
                   {plan.cta}
                 </button>
               )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="how-it-works" style={{ padding: "5rem 5%", background: "rgba(255,255,255,0.02)" }}>
+        <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
+          <p style={{ color: "#818CF8", fontSize: "0.8rem", letterSpacing: "0.12em", fontWeight: 700, marginBottom: "0.75rem" }}>SIMPLE & FAST</p>
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem", letterSpacing: "-0.03em", margin: 0 }}>How It Works</h2>
+          <p style={{ color: "rgba(255,255,255,0.45)", marginTop: "0.75rem", fontSize: "1rem" }}>From signup to job offers — in 4 simple steps.</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "1.5rem", maxWidth: 1000, margin: "0 auto" }}>
+          {[
+            { step: "01", icon: "📋", title: "Create Your Profile", desc: "Sign up and tell us about yourself — your skills, experience, desired roles, and target companies." },
+            { step: "02", icon: "📄", title: "Upload Your Resume", desc: "Upload your resume or build one using our AI Resume Builder. Our AI tailors it for every application." },
+            { step: "03", icon: "🤖", title: "AI Applies for You", desc: "Our AI scans 50+ job boards 24/7, finds matching roles, and auto-applies with personalized cover letters." },
+            { step: "04", icon: "🎯", title: "Track & Get Hired", desc: "Monitor all your applications in one dashboard. Prepare for interviews and land your dream job." },
+          ].map(({ step, icon, title, desc }) => (
+            <div key={step} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "2rem 1.5rem", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 16, right: 20, fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "3rem", color: "rgba(99,102,241,0.12)", lineHeight: 1 }}>{step}</div>
+              <div style={{ fontSize: "2.2rem", marginBottom: "1rem" }}>{icon}</div>
+              <h3 style={{ fontWeight: 700, fontSize: "1.1rem", color: "#fff", margin: "0 0 0.6rem" }}>{title}</h3>
+              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.9rem", lineHeight: 1.7, margin: 0 }}>{desc}</p>
             </div>
           ))}
         </div>
