@@ -1048,7 +1048,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
 // ─── ONBOARDING ───────────────────────────────────────────────────────────────
 function Onboarding({ user, onComplete }) {
   const [step, setStep] = useState(1);
-  const [prefs, setPrefs] = useState({ title: "", location: "", remote: "Remote", salary: "", level: "Mid-level" });
+  const [prefs, setPrefs] = useState({ title: "", location: "", remote: "Remote", salary: "", level: "Mid-level", notice: "", experience: "", current_salary: "" });
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [uploadedName, setUploadedName] = useState("");
@@ -1118,30 +1118,61 @@ function Onboarding({ user, onComplete }) {
           </div>
         )}
 
-        {step === 2 && (
-          <div>
-            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.8rem", marginBottom: "0.5rem" }}>Job preferences</h2>
-            <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: "2rem" }}>Saved to your Supabase profile for AI matching.</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {[["Desired Job Title","title","e.g. Senior React Developer"],["Preferred Location","location","e.g. Bangalore, Remote"],["Expected Salary (LPA)","salary","e.g. 25-30"]].map(([label,key,ph]) => (
-                <div key={key}>
-                  <label style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "block", marginBottom: 6 }}>{label.toUpperCase()}</label>
-                  <input value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} placeholder={ph} style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "11px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" }} />
-                </div>
-              ))}
-              <div style={{ display: "flex", gap: 12 }}>
-                {[["Work Type","remote",["Remote","Hybrid","Onsite"]],["Experience","level",["Entry","Mid-level","Senior","Lead"]]].map(([label,key,opts]) => (
-                  <div key={key} style={{ flex: 1 }}>
-                    <label style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "block", marginBottom: 6 }}>{label.toUpperCase()}</label>
-                    <select value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "11px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" }}>
-                      {opts.map(o => <option key={o} value={o} style={{ background: "#020817" }}>{o}</option>)}
-                    </select>
+        {step === 2 && (() => {
+          const step2Required = ["title","location","salary","notice","experience","current_salary"];
+          const step2Valid = step2Required.every(k => prefs[k]?.trim());
+          const inputStyle = { width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "11px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" };
+          const labelStyle = { fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "flex", alignItems: "center", gap: 4, marginBottom: 6 };
+          const req = <span style={{ color: "#f87171", fontSize: "0.7rem" }}>*</span>;
+          return (
+            <div>
+              <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.8rem", marginBottom: "0.5rem" }}>Job preferences</h2>
+              <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: "1.5rem" }}>All fields marked <span style={{ color: "#f87171" }}>*</span> are required.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {[["Desired Job Title","title","e.g. Senior React Developer"],["Preferred Location","location","e.g. Bangalore, Remote"]].map(([label,key,ph]) => (
+                  <div key={key}>
+                    <label style={labelStyle}>{label.toUpperCase()}{req}</label>
+                    <input value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} placeholder={ph} style={inputStyle} />
                   </div>
                 ))}
+                <div style={{ display: "flex", gap: 12 }}>
+                  {[["Work Type","remote",["Remote","Hybrid","Onsite"]],["Experience Level","level",["Entry","Mid-level","Senior","Lead"]]].map(([label,key,opts]) => (
+                    <div key={key} style={{ flex: 1 }}>
+                      <label style={labelStyle}>{label.toUpperCase()}{req}</label>
+                      <select value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} style={{ ...inputStyle, width: "100%" }}>
+                        {opts.map(o => <option key={o} value={o} style={{ background: "#020817" }}>{o}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>EXPECTED SALARY (LPA){req}</label>
+                    <input value={prefs.salary} onChange={e => setPrefs({...prefs, salary: e.target.value})} placeholder="e.g. 25-30" style={inputStyle} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>CURRENT ANNUAL SALARY (LPA){req}</label>
+                    <input value={prefs.current_salary} onChange={e => setPrefs({...prefs, current_salary: e.target.value})} placeholder="e.g. 18" style={inputStyle} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>TOTAL EXPERIENCE (YEARS){req}</label>
+                    <input value={prefs.experience} onChange={e => setPrefs({...prefs, experience: e.target.value})} placeholder="e.g. 3" style={inputStyle} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>NOTICE PERIOD{req}</label>
+                    <select value={prefs.notice} onChange={e => setPrefs({...prefs, notice: e.target.value})} style={{ ...inputStyle, width: "100%", color: prefs.notice ? "#fff" : "rgba(255,255,255,0.35)" }}>
+                      <option value="" style={{ background: "#020817" }}>Select notice period</option>
+                      {["Immediate","15 Days","1 Month","2 Months","3 Months","More than 3 Months"].map(o => <option key={o} value={o} style={{ background: "#020817", color: "#fff" }}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {!step2Valid && <p style={{ color: "#f87171", fontSize: "0.82rem", margin: "0.25rem 0 0" }}>Please fill all required fields to continue.</p>}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {step === 3 && (
           <div>
@@ -1158,9 +1189,16 @@ function Onboarding({ user, onComplete }) {
 
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2rem" }}>
           <button onClick={() => step > 1 && setStep(s => s-1)} style={{ background: "transparent", border: step === 1 ? "none" : "1px solid rgba(255,255,255,0.12)", color: step === 1 ? "transparent" : "rgba(255,255,255,0.6)", borderRadius: 10, padding: "12px 24px", cursor: step === 1 ? "default" : "pointer" }}>Back</button>
-          <button onClick={() => { if (step === 1 && !resumeChosen) return; step < 3 ? setStep(s => s+1) : complete(); }} disabled={saving || (step === 1 && !resumeChosen)} style={{ background: step === 1 && !resumeChosen ? "rgba(255,255,255,0.1)" : "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: step === 1 && !resumeChosen ? "rgba(255,255,255,0.3)" : "#fff", borderRadius: 10, padding: "12px 32px", cursor: step === 1 && !resumeChosen ? "not-allowed" : "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
-            {saving && <Spinner />}{step === 3 ? "Launch AutoApply AI 🚀" : "Continue →"}
-          </button>
+          {(() => {
+            const step2Required = ["title","location","salary","notice","experience","current_salary"];
+            const step2Valid = step2Required.every(k => prefs[k]?.trim());
+            const blocked = saving || (step === 1 && !resumeChosen) || (step === 2 && !step2Valid);
+            return (
+              <button onClick={() => { if (step === 1 && !resumeChosen) return; if (step === 2 && !step2Valid) return; step < 3 ? setStep(s => s+1) : complete(); }} disabled={blocked} style={{ background: blocked ? "rgba(255,255,255,0.1)" : "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: blocked ? "rgba(255,255,255,0.3)" : "#fff", borderRadius: 10, padding: "12px 32px", cursor: blocked ? "not-allowed" : "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                {saving && <Spinner />}{step === 3 ? "Launch AutoApply AI 🚀" : "Continue →"}
+              </button>
+            );
+          })()}
         </div>
       </div>
     </div>
