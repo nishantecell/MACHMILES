@@ -1017,7 +1017,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
               {mode === "signup" && (
                 <div style={{ display: "flex", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "rgba(255,255,255,0.5)", fontSize: "0.95rem", whiteSpace: "nowrap" }}>+91</div>
-                  <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Mobile number (optional)" type="tel" maxLength={10}
+                  <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Mobile number" type="tel" maxLength={10}
                     style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", flex: 1, boxSizing: "border-box" }} />
                 </div>
               )}
