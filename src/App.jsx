@@ -732,6 +732,58 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
         ))}
       </section>
 
+      {/* Reviews Slider */}
+      <section style={{ padding: "5rem 0", background: "linear-gradient(135deg,#0f172a,#1e1b4b)", overflow: "hidden" }}>
+        <style>{`
+          @keyframes scroll-left { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }
+          @keyframes scroll-right { 0% { transform: translateX(-50%) } 100% { transform: translateX(0) } }
+          .rev-track-l { animation: scroll-left 40s linear infinite; display: flex; width: max-content; }
+          .rev-track-r { animation: scroll-right 36s linear infinite; display: flex; width: max-content; }
+          .rev-track-l:hover, .rev-track-r:hover { animation-play-state: paused; }
+          .rev-card { flex-shrink: 0; width: 320px; margin: 0 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 1.5rem; }
+        `}</style>
+        <div style={{ textAlign: "center", marginBottom: "3rem", padding: "0 5%" }}>
+          <div style={{ display: "inline-block", background: "rgba(129,140,248,0.12)", border: "1px solid rgba(129,140,248,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#a5b4fc", fontWeight: 700, marginBottom: "1rem" }}>⭐ User Reviews</div>
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: "0 0 0.75rem", color: "#fff" }}>Loved by Job Seekers</h2>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "1rem", margin: 0 }}>Real results from real users across India</p>
+        </div>
+        {[
+          [
+            { name: "Rahul Sharma", role: "Software Engineer, Bangalore", stars: 5, text: "MachMiles completely changed my job search. I went from applying to 5 jobs a day to 50+. Got 3 interview calls in the first week!" },
+            { name: "Priya Nair", role: "MBA Graduate, Chennai", stars: 5, text: "As a fresher, I had no idea how to approach job applications at scale. MachMiles made it effortless. Landed my first job within a month!" },
+            { name: "Arjun Mehta", role: "Product Manager, Mumbai", stars: 5, text: "The AI matching is incredibly accurate. It only applies to roles that genuinely fit my profile. Zero time wasted on irrelevant jobs." },
+            { name: "Sneha Kulkarni", role: "Data Analyst, Pune", stars: 5, text: "I was spending 3 hours every day applying to jobs. MachMiles cut that down to 10 minutes. The time savings alone are worth every rupee." },
+            { name: "Vikram Reddy", role: "UI/UX Designer, Hyderabad", stars: 5, text: "Absolutely brilliant platform. The auto-apply feature is seamless and the resume optimization helped me stand out from hundreds of applicants." },
+            { name: "Ananya Iyer", role: "HR Consultant, Delhi", stars: 5, text: "Even as an HR professional, I used MachMiles for my own job switch. The intelligent filtering saved me enormous time. Highly recommended!" },
+          ],
+          [
+            { name: "Karan Gupta", role: "Backend Developer, Noida", stars: 5, text: "Got 7 interview calls in 2 weeks after using MachMiles. The platform is incredibly intuitive and the AI really understands what you're looking for." },
+            { name: "Divya Menon", role: "Finance Analyst, Kochi", stars: 5, text: "The job matching algorithm is spot on. I only got calls from companies that genuinely matched my skills and salary expectations." },
+            { name: "Rohan Joshi", role: "Full Stack Developer, Ahmedabad", stars: 5, text: "MachMiles is a game changer for anyone serious about their job search. Automated my entire application process and landed a 40% salary hike!" },
+            { name: "Meera Pillai", role: "Content Strategist, Bangalore", stars: 5, text: "The cover letter AI is phenomenal. Each letter felt personal and relevant. Recruiters actually commented on how well-crafted my applications were." },
+            { name: "Siddharth Rao", role: "Cloud Architect, Hyderabad", stars: 5, text: "Switched from manually applying to using MachMiles and the difference is night and day. 10x more applications, 10x more responses." },
+            { name: "Neha Tiwari", role: "Business Analyst, Gurgaon", stars: 5, text: "The dashboard is clean, the automation is reliable, and the support team is responsive. This is exactly what job seekers needed." },
+          ],
+        ].map((row, ri) => (
+          <div key={ri} style={{ overflow: "hidden", marginBottom: ri === 0 ? "1.5rem" : 0 }}>
+            <div className={ri === 0 ? "rev-track-l" : "rev-track-r"}>
+              {[...row, ...row].map((r, i) => (
+                <div key={i} className="rev-card">
+                  <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                    {Array(r.stars).fill("⭐").map((s, j) => <span key={j} style={{ fontSize: "0.85rem" }}>{s}</span>)}
+                  </div>
+                  <p style={{ margin: "0 0 14px", fontSize: "0.88rem", color: "rgba(255,255,255,0.75)", lineHeight: 1.65, fontStyle: "italic" }}>"{r.text}"</p>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "#fff" }}>{r.name}</div>
+                    <div style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{r.role}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+
       <footer style={{ background: "linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%)", padding: "4rem 5% 2rem", fontFamily: "Inter,sans-serif" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "2.5rem", marginBottom: "3rem" }}>
@@ -781,7 +833,13 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
               <div style={{ marginBottom: 8 }}>
                 <a href="https://machmiles.com/pricing" target="_blank" rel="noopener noreferrer" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif", textDecoration: "none" }}>Pricing</a>
               </div>
-              {[["About Us", onSignup], ["Reviews", onSignup], ["Privacy Policy", () => onPolicy("privacy")], ["Terms & Conditions", () => onPolicy("terms")], ["Refund Policy", () => onPolicy("refund")], ["Cancellation Policy", () => onPolicy("cancellation")]].map(([label, action]) => (
+              <div style={{ marginBottom: 8 }}>
+                <a href="/aboutus" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif", textDecoration: "none" }}>About Us</a>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <button onClick={() => document.querySelector(".rev-track-l")?.closest("section")?.scrollIntoView({ behavior: "smooth" })} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif" }}>Reviews</button>
+              </div>
+              {[["Privacy Policy", () => onPolicy("privacy")], ["Terms & Conditions", () => onPolicy("terms")], ["Refund Policy", () => onPolicy("refund")], ["Cancellation Policy", () => onPolicy("cancellation")]].map(([label, action]) => (
                 <div key={label} style={{ marginBottom: 8 }}>
                   <button onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif" }}>{label}</button>
                 </div>
@@ -4694,6 +4752,140 @@ function CANCELLATION_CONTENT() {
   </>);
 }
 
+// ─── ABOUT PAGE ───────────────────────────────────────────────────────────────
+function AboutPage({ onBack }) {
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');
+    @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    .ab-fade{animation:fadeUp 0.6s ease both}
+    .ab-card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(59,130,246,0.15)!important}
+    .ab-card{transition:transform 0.25s,box-shadow 0.25s}
+  `;
+  const VALUES = [
+    { icon: "💡", title: "Innovation", desc: "We continuously push the boundaries of AI to simplify career growth." },
+    { icon: "🛡️", title: "Integrity", desc: "We prioritize transparency, user trust, and data security in everything we do." },
+    { icon: "🏆", title: "Excellence", desc: "We strive to provide reliable, high-quality automation that delivers real value." },
+    { icon: "👤", title: "User First", desc: "Every feature we build is designed with the success of our users in mind." },
+    { icon: "🔄", title: "Continuous Improvement", desc: "The job market evolves every day, and so do we — constantly enhancing our platform for smarter solutions." },
+  ];
+  const WHY = [
+    "🤖 AI-Powered Job Auto Apply",
+    "⚡ Faster Applications with Smart Automation",
+    "🎯 Intelligent Job Matching",
+    "📄 Resume Management",
+    "🔒 Secure & Privacy-Focused Platform",
+    "🌍 Access to Opportunities Across Multiple Job Platforms",
+    "📈 Higher Chances of Landing Interviews",
+    "💼 Designed for Students, Professionals, and Career Changers",
+  ];
+  return (
+    <div style={{ minHeight: "100vh", background: "#fff", color: "#1e293b", fontFamily: "Inter,sans-serif" }}>
+      <style>{css}</style>
+      {/* Navbar */}
+      <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.96)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+        </button>
+        <button onClick={onBack} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 18px", fontSize: "0.88rem", cursor: "pointer", color: "#64748b" }}>← Back to Home</button>
+      </nav>
+
+      {/* Hero */}
+      <div style={{ background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "5rem 5% 4rem", textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)", width: 600, height: 300, background: "radial-gradient(ellipse,rgba(99,102,241,0.25),transparent 70%)", pointerEvents: "none" }} />
+        <div className="ab-fade" style={{ position: "relative" }}>
+          <div style={{ display: "inline-block", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#a5b4fc", fontWeight: 700, marginBottom: "1.5rem" }}>🚀 Founded 2026</div>
+          <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(2rem,5vw,3.5rem)", letterSpacing: "-0.03em", margin: "0 0 1.25rem", color: "#fff", lineHeight: 1.15 }}>About MachMiles</h1>
+          <p style={{ fontSize: "1.1rem", color: "rgba(255,255,255,0.65)", maxWidth: 640, margin: "0 auto", lineHeight: 1.75 }}>AI-powered career automation built to simplify and accelerate your job search — founded by <strong style={{ color: "#a5b4fc" }}>Mr. Nishant Thakur</strong>.</p>
+        </div>
+      </div>
+
+      {/* About Section */}
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "5rem 5%" }}>
+        <div className="ab-fade" style={{ marginBottom: "4rem" }}>
+          <div style={{ display: "inline-block", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 100, padding: "5px 16px", fontSize: "0.78rem", color: "#1d4ed8", fontWeight: 700, marginBottom: "1rem" }}>About Us</div>
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.5rem,3vw,2rem)", letterSpacing: "-0.02em", margin: "0 0 1.25rem" }}>Who We Are</h2>
+          <p style={{ fontSize: "1rem", color: "#475569", lineHeight: 1.85, margin: "0 0 1rem" }}>Founded in <strong>2026</strong> by <strong>Mr. Nishant Thakur</strong>, <strong>MachMiles</strong> is an AI-powered career automation platform built to simplify and accelerate the job search process. We understand that applying to hundreds of jobs manually is time-consuming, repetitive, and often discouraging.</p>
+          <p style={{ fontSize: "1rem", color: "#475569", lineHeight: 1.85, margin: "0 0 1rem" }}>Our platform leverages advanced Artificial Intelligence to automate job applications, helping job seekers focus on preparing for interviews and advancing their careers rather than spending countless hours filling out application forms.</p>
+          <p style={{ fontSize: "1rem", color: "#475569", lineHeight: 1.85, margin: 0 }}>At MachMiles, we combine intelligent automation with user-centric design to deliver a seamless job search experience. Whether you're a fresh graduate, an experienced professional, or someone looking for a career change, MachMiles empowers you to apply smarter, faster, and more efficiently.</p>
+        </div>
+
+        {/* Vision & Mission */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "1.5rem", marginBottom: "4rem" }}>
+          {[
+            { icon: "🔭", label: "Our Vision", color: "#7c3aed", bg: "#faf5ff", border: "#e9d5ff", text: "To become the world's most trusted AI-powered career platform, enabling millions of professionals to connect with the right opportunities through intelligent automation, innovation, and technology. We envision a future where finding the right job is no longer limited by time, geography, or manual effort." },
+            { icon: "🎯", label: "Our Mission", color: "#1d4ed8", bg: "#eff6ff", border: "#bfdbfe", text: "To transform the job application process by using Artificial Intelligence to make career advancement effortless, efficient, and accessible — automating repetitive tasks, helping candidates discover opportunities faster, and increasing interview chances through intelligent matching." },
+          ].map(item => (
+            <div key={item.label} className="ab-card" style={{ background: item.bg, border: `1.5px solid ${item.border}`, borderRadius: 20, padding: "2rem" }}>
+              <div style={{ fontSize: "2.5rem", marginBottom: 14 }}>{item.icon}</div>
+              <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.2rem", color: item.color, marginBottom: 12 }}>{item.label}</div>
+              <p style={{ margin: 0, fontSize: "0.9rem", color: "#475569", lineHeight: 1.75 }}>{item.text}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Mission bullets */}
+        <div style={{ marginBottom: "4rem" }}>
+          <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.3rem", margin: "0 0 1.25rem" }}>We are committed to:</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: "0.75rem" }}>
+            {[
+              "Automating repetitive job application tasks with AI",
+              "Helping candidates discover relevant opportunities faster",
+              "Increasing interview opportunities through intelligent matching",
+              "Saving users valuable time while improving application quality",
+              "Continuously innovating to make career growth simpler for everyone",
+              "Building a secure, transparent, and user-focused platform trusted worldwide",
+            ].map(item => (
+              <div key={item} style={{ display: "flex", alignItems: "flex-start", gap: 10, background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <span style={{ color: "#3B82F6", fontWeight: 700, fontSize: "1rem", flexShrink: 0 }}>✓</span>
+                <span style={{ fontSize: "0.88rem", color: "#475569", lineHeight: 1.5 }}>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Why Choose Us */}
+        <div style={{ marginBottom: "4rem" }}>
+          <div style={{ display: "inline-block", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 100, padding: "5px 16px", fontSize: "0.78rem", color: "#1d4ed8", fontWeight: 700, marginBottom: "1rem" }}>Why Us</div>
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.4rem,3vw,1.9rem)", letterSpacing: "-0.02em", margin: "0 0 1.5rem" }}>Why Choose MachMiles?</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: "1rem" }}>
+            {WHY.map(item => (
+              <div key={item} style={{ display: "flex", alignItems: "center", gap: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", fontSize: "0.9rem", color: "#1e293b", fontWeight: 500 }}>{item}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* Core Values */}
+        <div style={{ marginBottom: "4rem" }}>
+          <div style={{ display: "inline-block", background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 100, padding: "5px 16px", fontSize: "0.78rem", color: "#7c3aed", fontWeight: 700, marginBottom: "1rem" }}>Our DNA</div>
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.4rem,3vw,1.9rem)", letterSpacing: "-0.02em", margin: "0 0 1.5rem" }}>Our Core Values</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: "1.25rem" }}>
+            {VALUES.map(v => (
+              <div key={v.title} className="ab-card" style={{ border: "1.5px solid #e2e8f0", borderRadius: 16, padding: "1.75rem 1.5rem" }}>
+                <div style={{ fontSize: "2rem", marginBottom: 10 }}>{v.icon}</div>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b", marginBottom: 8 }}>{v.title}</div>
+                <p style={{ margin: 0, fontSize: "0.85rem", color: "#64748b", lineHeight: 1.65 }}>{v.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Closing */}
+        <div style={{ background: "linear-gradient(135deg,#020817,#1e1b4b)", borderRadius: 20, padding: "2.5rem", textAlign: "center" }}>
+          <div style={{ fontSize: "2.5rem", marginBottom: 16 }}>🚀</div>
+          <p style={{ margin: "0 0 20px", fontSize: "1.05rem", color: "rgba(255,255,255,0.8)", lineHeight: 1.8, maxWidth: 600, marginLeft: "auto", marginRight: "auto" }}><strong style={{ color: "#fff" }}>MachMiles</strong> isn't just another job portal — it's your AI-powered career partner, working around the clock to help you discover opportunities, submit applications, and move one step closer to your dream job.</p>
+          <button onClick={onBack} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer" }}>Start Your Journey →</button>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ background: "#f8fafc", borderTop: "1px solid #e2e8f0", padding: "1.5rem 5%", textAlign: "center" }}>
+        <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>© 2026 MachMiles · <a href="https://machmiles.com" style={{ color: "#3B82F6", textDecoration: "none" }}>machmiles.com</a></p>
+      </div>
+    </div>
+  );
+}
+
 // ─── DONATIONS PAGE ───────────────────────────────────────────────────────────
 function DonationsPage({ onBack }) {
   const PRESET_AMOUNTS = [100, 200, 500, 1000];
@@ -5172,6 +5364,10 @@ export default function App() {
       setScreen("donations");
       return;
     }
+    if (path === "/aboutus" || path === "/about-us" || path === "/about") {
+      setScreen("aboutus");
+      return;
+    }
     const POLICY_PATHS = {
       "/privacy-policy": "privacy",
       "/terms": "terms",
@@ -5254,6 +5450,7 @@ export default function App() {
   const goToPricing = () => { window.history.pushState(null, "", "/Pricing"); setScreen("pricing"); };
   const goToDonations = () => { window.history.pushState(null, "", "/donations"); setScreen("donations"); };
 
+  if (screen === "aboutus") return <AboutPage onBack={goHome} />;
   if (screen === "donations") return <DonationsPage onBack={goHome} />;
   if (screen === "pricing") return <PricingPage onSignup={() => { window.history.pushState(null, "", "/"); setScreen("signup"); }} onLogin={() => { window.history.pushState(null, "", "/"); setScreen("login"); }} onBack={goHome} />;
   if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
