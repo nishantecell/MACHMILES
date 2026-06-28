@@ -747,27 +747,25 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
           <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", letterSpacing: "-0.03em", margin: "0 0 0.75rem", color: "#fff" }}>Loved by Job Seekers</h2>
           <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "1rem", margin: 0 }}>Real results from real users across India</p>
         </div>
-        {[
-          [
+        {(() => {
+          const REVIEWS = [
             { name: "Rahul Sharma", role: "Software Engineer, Bangalore", stars: 5, text: "MachMiles completely changed my job search. I went from applying to 5 jobs a day to 50+. Got 3 interview calls in the first week!" },
             { name: "Priya Nair", role: "MBA Graduate, Chennai", stars: 5, text: "As a fresher, I had no idea how to approach job applications at scale. MachMiles made it effortless. Landed my first job within a month!" },
             { name: "Arjun Mehta", role: "Product Manager, Mumbai", stars: 5, text: "The AI matching is incredibly accurate. It only applies to roles that genuinely fit my profile. Zero time wasted on irrelevant jobs." },
             { name: "Sneha Kulkarni", role: "Data Analyst, Pune", stars: 5, text: "I was spending 3 hours every day applying to jobs. MachMiles cut that down to 10 minutes. The time savings alone are worth every rupee." },
             { name: "Vikram Reddy", role: "UI/UX Designer, Hyderabad", stars: 5, text: "Absolutely brilliant platform. The auto-apply feature is seamless and the resume optimization helped me stand out from hundreds of applicants." },
             { name: "Ananya Iyer", role: "HR Consultant, Delhi", stars: 5, text: "Even as an HR professional, I used MachMiles for my own job switch. The intelligent filtering saved me enormous time. Highly recommended!" },
-          ],
-          [
             { name: "Karan Gupta", role: "Backend Developer, Noida", stars: 5, text: "Got 7 interview calls in 2 weeks after using MachMiles. The platform is incredibly intuitive and the AI really understands what you're looking for." },
             { name: "Divya Menon", role: "Finance Analyst, Kochi", stars: 5, text: "The job matching algorithm is spot on. I only got calls from companies that genuinely matched my skills and salary expectations." },
             { name: "Rohan Joshi", role: "Full Stack Developer, Ahmedabad", stars: 5, text: "MachMiles is a game changer for anyone serious about their job search. Automated my entire application process and landed a 40% salary hike!" },
             { name: "Meera Pillai", role: "Content Strategist, Bangalore", stars: 5, text: "The cover letter AI is phenomenal. Each letter felt personal and relevant. Recruiters actually commented on how well-crafted my applications were." },
             { name: "Siddharth Rao", role: "Cloud Architect, Hyderabad", stars: 5, text: "Switched from manually applying to using MachMiles and the difference is night and day. 10x more applications, 10x more responses." },
             { name: "Neha Tiwari", role: "Business Analyst, Gurgaon", stars: 5, text: "The dashboard is clean, the automation is reliable, and the support team is responsive. This is exactly what job seekers needed." },
-          ],
-        ].map((row, ri) => (
-          <div key={ri} style={{ overflow: "hidden", marginBottom: ri === 0 ? "1.5rem" : 0 }}>
-            <div className={ri === 0 ? "rev-track-l" : "rev-track-r"}>
-              {[...row, ...row].map((r, i) => (
+          ];
+          return (
+          <div style={{ overflow: "hidden" }}>
+            <div className="rev-track-l">
+              {[...REVIEWS, ...REVIEWS].map((r, i) => (
                 <div key={i} className="rev-card">
                   <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
                     {Array(r.stars).fill("⭐").map((s, j) => <span key={j} style={{ fontSize: "0.85rem" }}>{s}</span>)}
@@ -781,7 +779,8 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
               ))}
             </div>
           </div>
-        ))}
+          );
+        })()}
       </section>
 
       <footer style={{ background: "linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%)", padding: "4rem 5% 2rem", fontFamily: "Inter,sans-serif" }}>
