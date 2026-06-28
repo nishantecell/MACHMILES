@@ -848,9 +848,9 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
             {/* Partners */}
             <div>
               <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "2px solid rgba(129,140,248,0.4)" }}>Partners</div>
-              {[["White-Label Solution", onSignup], ["Affiliate Program", onSignup], ["Career Coaches", onSignup], ["HR & Employers", onSignup], ["Campus Connect", onSignup]].map(([label, action]) => (
+              {[["White-Label Solution","/white-label-solution"],["Affiliate Program","/affiliate-program"],["Career Coaches","/career-coaches"],["HR & Employers","/hr-employers"],["Campus Connect","/campus-connect"]].map(([label, href]) => (
                 <div key={label} style={{ marginBottom: 8 }}>
-                  <button onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif" }}>{label}</button>
+                  <a href={href} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif", textDecoration: "none" }}>{label}</a>
                 </div>
               ))}
             </div>
@@ -4751,6 +4751,117 @@ function CANCELLATION_CONTENT() {
   </>);
 }
 
+// ─── PARTNER PAGE SHELL ───────────────────────────────────────────────────────
+function PartnerPage({ onBack, title, subtitle, sections }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Inter,sans-serif", color: "#e2e8f0" }}>
+      <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.pp-fade{animation:fadeUp 0.6s ease both}`}</style>
+      {/* Nav */}
+      <div style={{ background: "rgba(15,23,42,0.95)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "1rem 2rem", display: "flex", alignItems: "center", gap: "1rem", position: "sticky", top: 0, zIndex: 50, backdropFilter: "blur(12px)" }}>
+        <button onClick={onBack} style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "#94a3b8", borderRadius: 8, padding: "0.5rem 1rem", cursor: "pointer", fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 6 }}>← Back</button>
+        <span style={{ color: "#fff", fontWeight: 700, fontSize: "1rem" }}>MACHMILES · Partners</span>
+      </div>
+      {/* Hero */}
+      <div style={{ background: "linear-gradient(135deg,#1e1b4b 0%,#1e3a5f 50%,#0f172a 100%)", padding: "5rem 2rem 4rem", textAlign: "center" }}>
+        <div className="pp-fade" style={{ maxWidth: 700, margin: "0 auto" }}>
+          <div style={{ display: "inline-block", background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 999, padding: "0.4rem 1.2rem", fontSize: "0.8rem", color: "#a5b4fc", marginBottom: "1.5rem", letterSpacing: "0.08em", textTransform: "uppercase" }}>Partner Program</div>
+          <h1 style={{ fontSize: "clamp(2rem,5vw,3.2rem)", fontWeight: 800, color: "#fff", lineHeight: 1.1, margin: "0 0 1rem" }}>{title}</h1>
+          <p style={{ fontSize: "1.1rem", color: "#94a3b8", lineHeight: 1.7, margin: 0 }}>{subtitle}</p>
+        </div>
+      </div>
+      {/* Sections */}
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "3rem 2rem 5rem" }}>
+        {sections.map((sec, i) => (
+          <div key={i} className="pp-fade" style={{ marginBottom: "3rem", animationDelay: `${i * 0.1}s` }}>
+            {sec.heading && <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#818cf8", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "2px solid rgba(129,140,248,0.2)" }}>{sec.heading}</h2>}
+            {sec.text && <p style={{ fontSize: "1rem", color: "#94a3b8", lineHeight: 1.8, margin: "0 0 1rem" }}>{sec.text}</p>}
+            {sec.bullets && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: "0.75rem", margin: "1rem 0" }}>
+                {sec.bullets.map((b, j) => (
+                  <div key={j} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "0.85rem 1rem", display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <span style={{ color: "#818cf8", fontSize: "1rem", flexShrink: 0 }}>✦</span>
+                    <span style={{ fontSize: "0.9rem", color: "#cbd5e1", lineHeight: 1.5 }}>{b}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {/* CTA */}
+        <div style={{ textAlign: "center", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 16, padding: "2.5rem" }}>
+          <h3 style={{ color: "#fff", fontSize: "1.4rem", fontWeight: 700, margin: "0 0 0.75rem" }}>Ready to Partner with Us?</h3>
+          <p style={{ color: "#94a3b8", marginBottom: "1.5rem" }}>Email us at <a href="mailto:partners@machmiles.com" style={{ color: "#818cf8", textDecoration: "none" }}>partners@machmiles.com</a> or <a href="mailto:info@machmiles.com" style={{ color: "#818cf8", textDecoration: "none" }}>info@machmiles.com</a></p>
+          <a href="/" style={{ display: "inline-block", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", textDecoration: "none", fontWeight: 700, fontSize: "0.95rem", padding: "0.85rem 2.5rem", borderRadius: 10 }}>Go to AutoApply AI →</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WhiteLabelPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="White-Label AI Recruitment Platform"
+    subtitle="Empower Your Brand with AI-Powered Job Application Automation"
+    sections={[
+      { text: "MachMiles offers a fully customizable White-Label Solution for businesses, recruitment agencies, educational institutions, career consultants, and HR service providers who want to launch their own AI-powered job application platform without building the technology from scratch. Our white-label platform allows you to operate under your own brand, domain, and identity while leveraging MachMiles' intelligent automation engine." },
+      { heading: "What You Get", bullets: ["Complete White-Label Branding","Custom Domain Support","AI Auto Job Apply Engine","Resume Builder","AI Cover Letter Generator","Job Tracking Dashboard","Employer Dashboard","User Management","Analytics & Reporting","Secure Cloud Infrastructure","Razorpay Payment Integration","Subscription Management"] },
+      { heading: "Who Can Use It?", bullets: ["Recruitment Agencies","Universities & Colleges","Career Consultants","Staffing Companies","Job Portals","HR Tech Startups"] },
+      { heading: "Benefits", bullets: ["Launch in days instead of months","Zero development cost","Scalable infrastructure","Regular feature updates","Dedicated technical support"] },
+    ]}
+  />;
+}
+
+function AffiliatePage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Earn While Helping People Find Jobs"
+    subtitle="Become a MachMiles Affiliate and earn commissions by referring job seekers to our AI-powered platform."
+    sections={[
+      { text: "Whether you're a content creator, blogger, YouTuber, career coach, recruiter, or influencer, you can generate recurring income by recommending MachMiles." },
+      { heading: "Affiliate Benefits", bullets: ["Attractive Commission Structure","Dedicated Referral Dashboard","Real-Time Tracking","Monthly Payouts","Marketing Assets Provided","No Joining Fee"] },
+      { heading: "How It Works", bullets: ["Join our Affiliate Program","Receive your unique referral link","Share it with your audience","Earn commission for every successful subscription"] },
+      { heading: "Ideal For", bullets: ["Career Bloggers","LinkedIn Creators","YouTubers","HR Professionals","Career Consultants","Student Communities"] },
+    ]}
+  />;
+}
+
+function CareerCoachesPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Partner With MachMiles as a Career Coach"
+    subtitle="Help your clients achieve career success faster with the power of AI."
+    sections={[
+      { text: "MachMiles partners with experienced career coaches to offer end-to-end career support, including resume reviews, interview preparation, LinkedIn optimization, career planning, and job search strategies." },
+      { heading: "Partnership Benefits", bullets: ["Access to New Clients","Featured Coach Profile","Lead Generation","AI Tools for Your Clients","Revenue Sharing Opportunities","Dedicated Support"] },
+      { heading: "Services Coaches Can Offer", bullets: ["Resume Review","Interview Coaching","LinkedIn Profile Optimization","Career Counselling","Salary Negotiation","Personal Branding"] },
+    ]}
+  />;
+}
+
+function HREmployersPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Hire Better Talent with MachMiles"
+    subtitle="MachMiles helps employers discover qualified candidates faster through intelligent AI-powered recruitment tools."
+    sections={[
+      { text: "Whether you're hiring one employee or building an entire workforce, we streamline candidate sourcing and recruitment management." },
+      { heading: "Employer Solutions", bullets: ["Candidate Database","Resume Search","AI Candidate Matching","Bulk Hiring","Job Posting","Employer Dashboard","Recruitment Analytics","Interview Scheduling"] },
+      { heading: "Why Employers Choose MachMiles", bullets: ["Faster Hiring","Better Candidate Matching","Reduced Hiring Costs","AI-Driven Recommendations","Simplified Recruitment Workflow"] },
+      { heading: "Industries We Serve", bullets: ["Information Technology","Banking & Finance","Manufacturing","Healthcare","Retail","Logistics","Education","Startups"] },
+    ]}
+  />;
+}
+
+function CampusConnectPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Empowering Students. Connecting Campuses with Careers."
+    subtitle="MachMiles Campus Connect bridges the gap between education and employment by partnering with colleges, universities, and training institutes."
+    sections={[
+      { text: "Our platform enables students to discover opportunities, build professional resumes, and automatically apply to relevant jobs using AI." },
+      { heading: "Campus Benefits", bullets: ["AI Resume Builder","Auto Job Applications","Internship Opportunities","Campus Placement Support","Career Resources","Placement Analytics","Student Performance Dashboard"] },
+      { heading: "Institution Benefits", bullets: ["Improved Placement Rates","Dedicated Placement Dashboard","Student Progress Tracking","Employer Network Access","Industry Collaborations"] },
+      { heading: "Student Benefits", bullets: ["Build Professional Resumes","Apply to Hundreds of Jobs Automatically","Track Applications","AI Career Guidance","Interview Preparation Resources"] },
+    ]}
+  />;
+}
+
 // ─── ABOUT PAGE ───────────────────────────────────────────────────────────────
 function AboutPage({ onBack }) {
   const css = `
@@ -5367,6 +5478,11 @@ export default function App() {
       setScreen("aboutus");
       return;
     }
+    if (path === "/white-label-solution") { setScreen("white-label"); return; }
+    if (path === "/affiliate-program") { setScreen("affiliate"); return; }
+    if (path === "/career-coaches") { setScreen("career-coaches"); return; }
+    if (path === "/hr-employers") { setScreen("hr-employers"); return; }
+    if (path === "/campus-connect") { setScreen("campus-connect"); return; }
     const POLICY_PATHS = {
       "/privacy-policy": "privacy",
       "/terms": "terms",
@@ -5450,6 +5566,11 @@ export default function App() {
   const goToDonations = () => { window.history.pushState(null, "", "/donations"); setScreen("donations"); };
 
   if (screen === "aboutus") return <AboutPage onBack={goHome} />;
+  if (screen === "white-label") return <WhiteLabelPage onBack={goHome} />;
+  if (screen === "affiliate") return <AffiliatePage onBack={goHome} />;
+  if (screen === "career-coaches") return <CareerCoachesPage onBack={goHome} />;
+  if (screen === "hr-employers") return <HREmployersPage onBack={goHome} />;
+  if (screen === "campus-connect") return <CampusConnectPage onBack={goHome} />;
   if (screen === "donations") return <DonationsPage onBack={goHome} />;
   if (screen === "pricing") return <PricingPage onSignup={() => { window.history.pushState(null, "", "/"); setScreen("signup"); }} onLogin={() => { window.history.pushState(null, "", "/"); setScreen("login"); }} onBack={goHome} />;
   if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
