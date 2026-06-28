@@ -31,23 +31,28 @@ async function tryGemini(systemPrompt, messages, maxTokens) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('NO_GEMINI_KEY');
 
-  // Convert messages to Gemini format
-  const contents = messages.map(m => ({
+  // Gemini requires alternating user/model turns starting with user.
+  // Prepend system prompt as first user message, filter to only user/assistant messages.
+  const filtered = messages.filter(m => m.role === 'user' || m.role === 'assistant');
+  const contents = filtered.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
 
+  // If first message isn't from user, add a dummy user turn
+  if (!contents.length || contents[0].role !== 'user') {
+    contents.unshift({ role: 'user', parts: [{ text: 'Hello' }] });
+  }
+
+  const body = {
+    system_instruction: { role: 'user', parts: [{ text: systemPrompt }] },
+    contents,
+    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
+  };
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { maxOutputTokens: maxTokens },
-      }),
-    }
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   );
 
   if (!response.ok) {
@@ -71,24 +76,26 @@ export default async function handler(req, res) {
 
   // Try OpenAI first, fall back to Gemini
   let content = '';
-  let lastError = '';
+  let openaiErr = '';
+  let geminiErr = '';
 
   try {
     content = await tryOpenAI(systemPrompt, messages, maxTokens);
   } catch (e) {
-    console.warn('OpenAI failed, trying Gemini fallback:', e.message);
-    lastError = e.message;
+    openaiErr = e.message;
+    console.warn('OpenAI failed:', openaiErr, '— trying Gemini fallback');
     try {
       content = await tryGemini(systemPrompt, messages, maxTokens);
     } catch (e2) {
-      console.error('Gemini fallback also failed:', e2.message);
-      lastError = e2.message;
+      geminiErr = e2.message;
+      console.error('Gemini fallback also failed:', geminiErr);
     }
   }
 
   if (!content) {
-    const noKey = lastError.includes('NO_OPENAI_KEY') && lastError.includes('NO_GEMINI_KEY');
-    if (noKey) return res.status(503).json({ success: false, message: 'AI service not configured. Please contact support.' });
+    const noKeys = openaiErr.includes('NO_OPENAI_KEY') && geminiErr.includes('NO_GEMINI_KEY');
+    if (noKeys) return res.status(503).json({ success: false, message: 'AI service not configured. Please contact support.' });
+    console.error('Both AI providers failed. OpenAI:', openaiErr, 'Gemini:', geminiErr);
     return res.status(503).json({ success: false, message: 'AI service is temporarily unavailable. Please try again in a moment.' });
   }
 
