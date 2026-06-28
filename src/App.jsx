@@ -294,7 +294,7 @@ async function startPayment(plan, onSuccess, onError) {
   if (!loaded) { onError("Failed to load Razorpay"); return; }
 
   // Create order on backend
-  const orderRes = await apiPost("/payments/create-order", { plan: plan.name.toLowerCase() });
+  const orderRes = await apiPost("/payments", { action: "create-order", plan: plan.name.toLowerCase() });
   if (!orderRes.success) { onError(orderRes.message || "Failed to create order"); return; }
 
   const { order_id, amount, currency, key_id, user } = orderRes.data;
@@ -310,7 +310,8 @@ async function startPayment(plan, onSuccess, onError) {
     theme: { color: "#3B82F6" },
     handler: async (r) => {
       // Verify payment on backend
-      const verifyRes = await apiPost("/payments/verify", {
+      const verifyRes = await apiPost("/payments", {
+        action: "verify",
         razorpay_order_id: r.razorpay_order_id,
         razorpay_payment_id: r.razorpay_payment_id,
         razorpay_signature: r.razorpay_signature,
