@@ -5577,6 +5577,26 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    const META = {
+      landing:         { title: "AutoApply AI by MACHMILES — AI-Powered Job Application Automation in India", desc: "India's #1 AI job application automation platform. Upload your resume once and our AI finds and applies to 100+ matching jobs on LinkedIn, Naukri, Indeed automatically." },
+      pricing:         { title: "Pricing — AutoApply AI by MACHMILES | Pro & Premium Plans", desc: "Affordable AI job application automation plans starting at ₹599/month. Apply to 100+ jobs daily automatically. Free plan available." },
+      aboutus:         { title: "About MACHMILES — AI Career Automation Company India", desc: "MACHMILES is India's leading AI-powered career automation company helping job seekers apply to more jobs, faster, with less effort." },
+      donations:       { title: "Support MACHMILES — Help Us Empower Job Seekers in India", desc: "Support MACHMILES and help us make AI-powered job application automation accessible to every job seeker in India." },
+      "white-label":   { title: "White Label AI Job Automation Solution — MACHMILES", desc: "Launch your own AI-powered job platform with MACHMILES white-label solution. Customized branding, full features, ready to deploy." },
+      affiliate:       { title: "Affiliate Program — Earn with MACHMILES AutoApply AI", desc: "Join the MACHMILES affiliate program and earn commissions by referring job seekers to India's #1 AI job application platform." },
+      "career-coaches": { title: "Career Coaches — Partner with MACHMILES AutoApply AI", desc: "Partner with MACHMILES to offer your clients AI-powered job application automation. Scale your career coaching business." },
+      "hr-employers":  { title: "For HR & Employers — Post Jobs on MACHMILES AutoApply AI", desc: "Reach thousands of active job seekers using MACHMILES AutoApply AI. Find the right candidates faster with our AI matching platform." },
+      "campus-connect": { title: "Campus Connect — AI Job Placement for Colleges | MACHMILES", desc: "MACHMILES Campus Connect helps students and freshers get placed faster with AI-powered job application automation." },
+    };
+    const m = META[screen];
+    if (m) {
+      document.title = m.title;
+      const descTag = document.querySelector('meta[name="description"]');
+      if (descTag) descTag.setAttribute("content", m.desc);
+    }
+  }, [screen]);
+
   if (screen === "loading") return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "Inter,sans-serif", flexDirection: "column", gap: 16 }}>
       <div style={{ width: 48, height: 48, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.2rem" }}>A</div>
