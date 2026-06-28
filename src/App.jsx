@@ -415,38 +415,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
 
   return (
     <div style={{ background: "#020817", minHeight: "100vh", color: "#fff", fontFamily: "Inter, sans-serif" }}>
-      <style>{`
-        @keyframes don-marquee { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }
-        @keyframes don-pulse-red { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5) } 70% { box-shadow: 0 0 0 8px rgba(220,38,38,0) } }
-        .don-bar-link:hover { background: rgba(220,38,38,0.25) !important; }
-        .don-bar-link { transition: background 0.2s; }
-        .don-cta-card:hover { transform: translateY(-2px); box-shadow: 0 16px 48px rgba(220,38,38,0.35) !important; }
-        .don-cta-card { transition: transform 0.25s, box-shadow 0.25s; }
-      `}</style>
-
-      {/* Emergency Announcement Bar */}
-      <a href="/donations" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, background: "linear-gradient(90deg,#7f1d1d,#DC2626,#7f1d1d)", padding: "9px 16px", textDecoration: "none", position: "relative", zIndex: 200, overflow: "hidden", cursor: "pointer" }} className="don-bar-link">
-        <span style={{ animation: "don-pulse-red 2s infinite", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 8, height: 8, borderRadius: "50%", background: "#fff", flexShrink: 0 }} />
-        <div style={{ overflow: "hidden", flex: 1, maxWidth: 700 }}>
-          <div style={{ display: "flex", gap: "3rem", whiteSpace: "nowrap", animation: "don-marquee 18s linear infinite", width: "max-content" }}>
-            {[1,2].map(i => (
-              <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "2rem", fontSize: "0.82rem", color: "#fff", fontWeight: 600, letterSpacing: "0.02em" }}>
-                <span>🇻🇪 EMERGENCY APPEAL</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-                <span>Venezuela Earthquake Relief — Help families in crisis</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-                <span>Donate Now →</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-                <span>Every ₹100 provides emergency meals</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-              </span>
-            ))}
-          </div>
-        </div>
-        <span style={{ flexShrink: 0, background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.35)", borderRadius: 100, padding: "3px 12px", fontSize: "0.75rem", color: "#fff", fontWeight: 700, whiteSpace: "nowrap" }}>Donate →</span>
-      </a>
-
-      <nav style={{ position: "fixed", top: 38, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4%", height: 64, gap: 16 }}>
+      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4%", height: 64, gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>A</div>
           <div>
