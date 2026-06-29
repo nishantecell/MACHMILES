@@ -22,7 +22,8 @@ export default async function handler(req, res) {
 
     if (req.method === 'PUT') {
       const allowed = ['full_name', 'phone', 'location', 'desired_job_title', 'experience_level',
-                       'work_type', 'salary', 'linkedin_url', 'github_url', 'bio'];
+                       'work_type', 'salary', 'linkedin_url', 'github_url', 'bio',
+                       'onboarded', 'notice_period', 'total_experience', 'current_salary'];
       const updates = {};
       allowed.forEach(f => { if (req.body?.[f] !== undefined) updates[f] = req.body[f]; });
       const { data, error } = await supabase.from('profiles').update(updates).eq('id', user.id).select().single();

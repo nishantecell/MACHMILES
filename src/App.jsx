@@ -1053,7 +1053,17 @@ function Onboarding({ user, onComplete }) {
 
   const complete = async (navToResume = false) => {
     setSaving(true);
-    await supabase.from("profiles").upsert({ id: user.id, desired_job_title: prefs.title, location: prefs.location, work_type: prefs.remote, salary: prefs.salary, experience_level: prefs.level, onboarded: true });
+    await apiPut("/profile", {
+      desired_job_title: prefs.title,
+      location: prefs.location,
+      work_type: prefs.remote,
+      salary: prefs.salary,
+      experience_level: prefs.level,
+      notice_period: prefs.notice,
+      total_experience: prefs.experience,
+      current_salary: prefs.current_salary,
+      onboarded: true,
+    });
     setSaving(false);
     onComplete(navToResume ? "Resume" : null);
   };
