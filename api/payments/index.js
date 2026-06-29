@@ -65,8 +65,9 @@ export default async function handler(req, res) {
       });
     } catch (e) {
       console.error('Create order error:', e.message, e.statusCode, JSON.stringify(e.error));
-      const detail = e.error?.description || e.message || 'Unknown error';
-      return err(res, `Failed to create order: ${detail}`);
+      const detail = e.error?.description || e.error?.field || e.message || 'Unknown error';
+      const code = e.statusCode || e.error?.code || '';
+      return err(res, `Payment error [${code}]: ${detail}`);
     }
   }
 
