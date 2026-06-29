@@ -47,10 +47,11 @@ export default async function handler(req, res) {
         }
       }
 
+      const receipt = `mm_${user.id.replace(/-/g, '').slice(0, 20)}_${Date.now().toString().slice(-8)}`;
       const order = await razorpay.orders.create({
         amount,
         currency: 'INR',
-        receipt:  `order_${user.id}_${Date.now()}`,
+        receipt,
         notes:    { user_id: String(user.id), plan },
       });
 
