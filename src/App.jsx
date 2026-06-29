@@ -57,6 +57,9 @@ const apiDelete = (path)       => api(path, { method: "DELETE" });
 // Admin gets full premium access everywhere
 const effectivePlan = (profile) => profile?.role === "admin" ? "premium" : (profile?.plan || "free");
 
+// User needs onboarding only if onboarded flag is false AND no profile data exists yet
+const needsOnboarding = (u) => !u?.onboarded && !u?.desired_job_title && !u?.location;
+
 // ─── PLANS ────────────────────────────────────────────────────────────────────
 const PLANS = [
   { name: "Free", price: "₹0", period: "", amount: 0, features: ["5 AI applications/month", "1 Resume", "Basic AI matching", "Job tracking (last 5 only)"], cta: "Get Started", razorpay: null },
@@ -6553,7 +6556,7 @@ export default function App() {
       }
       return;
     }
-    setScreen(u.onboarded === false ? "onboarding" : "app");
+    setScreen(needsOnboarding(u) ? "onboarding" : "app");
   };
 
   useEffect(() => {
@@ -6615,7 +6618,7 @@ export default function App() {
               const me = await apiGet("/auth/me");
               if (me.success && me.data) {
                 setUser(me.data);
-                setScreen(me.data.onboarded === false ? "onboarding" : "app");
+                setScreen(needsOnboarding(me.data) ? "onboarding" : "app");
                 return;
               }
             }
@@ -6626,7 +6629,7 @@ export default function App() {
           const me = await apiGet("/auth/me");
           if (me.success && me.data) {
             setUser(me.data);
-            setScreen(me.data.onboarded === false ? "onboarding" : "app");
+            setScreen(needsOnboarding(me.data) ? "onboarding" : "app");
           } else {
             setScreen("landing");
           }
@@ -6644,7 +6647,7 @@ export default function App() {
       apiGet("/auth/me").then(data => {
         if (data.success && data.data) {
           setUser(data.data);
-          setScreen(data.data.onboarded === false ? "onboarding" : "app");
+          setScreen(needsOnboarding(data.data) ? "onboarding" : "app");
         } else if (attempt < 3) {
           // Retry up to 2 more times (cold start / transient failure)
           setTimeout(() => tryMe(attempt + 1), 800 * attempt);
