@@ -6580,7 +6580,7 @@ export default function App() {
       }
       return;
     }
-    setScreen(needsOnboarding(fullUser) ? "onboarding" : "app");
+    setScreen(needsOnboarding(u) ? "onboarding" : "app");
   };
 
   useEffect(() => {
