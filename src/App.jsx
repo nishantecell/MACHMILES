@@ -6567,16 +6567,8 @@ export default function App() {
   const checkAndRoute = async (u) => {
     if (!u) { setScreen("landing"); return; }
 
-    // If login response is missing created_at, fetch full profile from /auth/me
-    // so needsOnboarding() has the data it needs to skip onboarding for existing users
-    let fullUser = u;
-    if (!u.created_at) {
-      const me = await apiGet("/auth/me").catch(() => null);
-      if (me?.success && me.data) fullUser = me.data;
-    }
-
-    setCachedUser(fullUser);
-    setUser(fullUser);
+    setCachedUser(u);
+    setUser(u);
 
     const pendingPlan = localStorage.getItem("pending_plan");
     if (pendingPlan) {
