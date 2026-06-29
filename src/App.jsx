@@ -434,6 +434,8 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
           ))}
           <a href="https://machmiles.com/pricing" target="_blank" rel="noopener noreferrer" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif", textDecoration: "none" }}
             onMouseEnter={e => e.target.style.color="#fff"} onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.65)"}>Pricing</a>
+          <a href="/blog" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif", textDecoration: "none" }}
+            onMouseEnter={e => e.target.style.color="#fff"} onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.65)"}>Blog</a>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
           <button onClick={onLogin} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: "0.9rem", whiteSpace: "nowrap" }}>Sign In</button>
@@ -4826,6 +4828,723 @@ function PartnerPage({ onBack, title, subtitle, sections }) {
   );
 }
 
+// ─── BLOG DATA ────────────────────────────────────────────────────────────────
+const BLOG_POSTS = [
+  {
+    slug: "how-to-apply-to-100-jobs-in-one-day",
+    title: "How to Apply to 100 Jobs in 1 Day Using AI",
+    date: "June 25, 2025",
+    readTime: "6 min read",
+    category: "Job Search Strategy",
+    excerpt: "Stop spending 30 minutes on each application. Here's how AI job automation tools let Indian job seekers apply to 100+ roles every single day — without burning out.",
+    content: `
+## The Problem with Manual Job Applications
+
+The average job seeker in India spends 45 minutes on a single job application. Writing a tailored cover letter, adjusting the resume, filling out forms — it adds up fast. If you apply to 5 jobs a day, that's nearly 4 hours of work with very little to show for it.
+
+The math is brutal: to apply to 100 jobs, you need **75 hours** of manual effort. That's almost two full work weeks.
+
+AI job application automation changes this entirely.
+
+## How AI Auto-Apply Works
+
+Modern AI platforms like AutoApply AI by MACHMILES let you:
+
+1. **Upload your resume once** — the AI parses your skills, experience, and education automatically
+2. **Set your job preferences** — role, location, salary range, notice period, remote/hybrid preference
+3. **Let the AI search and apply** — it scans LinkedIn, Naukri, Indeed, Wellfound and 50+ job boards simultaneously
+4. **AI tailors each application** — your resume and cover letter are automatically customized for each job's requirements
+
+The result: 100 applications sent in hours, not weeks.
+
+## Step-by-Step: Apply to 100 Jobs Today
+
+### Step 1: Prepare a Strong Base Resume
+Before automation works well, your resume needs to be solid. Focus on:
+- Quantified achievements ("Increased sales by 40%", "Led a team of 8")
+- ATS-friendly formatting (no tables, no columns, no images)
+- Keywords from your target job descriptions
+
+### Step 2: Set Up Your AutoApply Profile
+Sign up at machmiles.com, upload your resume, and fill in:
+- Target job titles (add 3-5 variations: "Software Engineer", "Backend Developer", "SDE")
+- Preferred locations (can select multiple cities)
+- Salary expectations
+- Notice period
+
+### Step 3: Choose Your Application Mode
+- **Fully Automatic** — AI applies without asking you
+- **Review Before Applying** — you approve each application
+- **Manual** — use AI suggestions but apply yourself
+
+For maximum volume, Fully Automatic is the fastest.
+
+### Step 4: Monitor Your Dashboard
+Track every application in real time — status updates, company responses, and interview invitations all appear in one place.
+
+## What to Expect
+
+Most users who automate their job search report:
+- **3x more interview calls** compared to manual applying
+- **First interview invite** within 48-72 hours of activating automation
+- **10-15 applications per hour** sent automatically
+
+## Common Mistakes to Avoid
+
+- **Don't use a generic resume** — even with automation, a strong base resume matters
+- **Don't apply to irrelevant roles** — set your preferences carefully so the AI targets the right jobs
+- **Don't ignore follow-ups** — when companies respond, reply fast; the AI got you in the door
+
+## The Bottom Line
+
+Applying to 100 jobs in a day is no longer a fantasy. With AI automation, it's Tuesday morning. Set it up once, let it run, and focus your energy on preparing for the interviews that come in.
+
+[Start Applying for Free →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "best-ai-job-application-tools-india-2025",
+    title: "Best AI Job Application Tools in India 2025",
+    date: "June 20, 2025",
+    readTime: "8 min read",
+    category: "Tools & Reviews",
+    excerpt: "A detailed comparison of the top AI-powered job application tools available in India in 2025 — features, pricing, and which one is right for your job search.",
+    content: `
+## AI Job Application Tools Are Changing the Game in India
+
+In 2025, the Indian job market is more competitive than ever. Over 1.5 crore graduates enter the workforce every year, all competing for the same roles on LinkedIn, Naukri, and Indeed. The candidates who get more interviews aren't always the most qualified — they're the ones who apply the most.
+
+AI job application tools solve this by automating the most time-consuming parts of the job search.
+
+## Top AI Job Application Tools in India (2025)
+
+### 1. AutoApply AI by MACHMILES ⭐ Best for Indian Job Seekers
+
+**What it does:** Fully automated job applications across 50+ Indian and global job boards.
+
+**Key features:**
+- Auto-applies to LinkedIn, Naukri, Indeed, Wellfound simultaneously
+- AI-tailored resume and cover letter for each job
+- Real-time application tracking dashboard
+- Interview prep AI coach
+- Supports Indian salary formats (LPA), cities, and job boards
+
+**Pricing:**
+- Free plan available
+- Pro: ₹599/month
+- Premium: ₹999/month
+
+**Best for:** Freshers, experienced professionals, and anyone doing an active job search in India.
+
+[Try AutoApply AI Free →](https://www.machmiles.com)
+
+---
+
+### 2. LazyApply
+
+**What it does:** Auto-applies to LinkedIn jobs using a Chrome extension.
+
+**Key features:**
+- LinkedIn Easy Apply automation
+- Basic resume customization
+
+**Limitations:**
+- Only works on LinkedIn (not Naukri or Indeed)
+- Pricing in USD (expensive for Indian users)
+- No Indian job board support
+
+**Pricing:** ~$49/month (approx. ₹4,000+)
+
+---
+
+### 3. Jobscan
+
+**What it does:** ATS resume optimization — not auto-apply, but helps your resume pass filters.
+
+**Key features:**
+- Resume-to-job-description keyword matching
+- ATS score checker
+
+**Limitations:**
+- Not an auto-apply tool
+- You still apply manually
+
+**Pricing:** Free tier + $49.95/month premium
+
+---
+
+### 4. Simplify.jobs
+
+**What it does:** Chrome extension that auto-fills job applications.
+
+**Key features:**
+- Auto-fills forms on company career pages
+- Tracks applications
+
+**Limitations:**
+- You still need to find and open each job manually
+- Limited Indian job board coverage
+
+**Pricing:** Free + $30/month premium
+
+---
+
+## Comparison Table
+
+| Feature | AutoApply AI (MACHMILES) | LazyApply | Jobscan | Simplify |
+|---|---|---|---|---|
+| Indian job boards | ✅ Yes | ❌ No | ❌ No | ❌ Limited |
+| Auto-apply | ✅ Fully automatic | ✅ LinkedIn only | ❌ No | ⚠️ Partial |
+| AI resume tailoring | ✅ Yes | ⚠️ Basic | ✅ Yes | ❌ No |
+| Pricing in INR | ✅ Yes | ❌ USD | ❌ USD | ❌ USD |
+| Free plan | ✅ Yes | ❌ No | ✅ Limited | ✅ Limited |
+| Interview prep | ✅ Yes | ❌ No | ❌ No | ❌ No |
+
+## Which Tool Should You Choose?
+
+If you're a job seeker in India, **AutoApply AI by MACHMILES** is the only tool built specifically for the Indian market — with Naukri, Rupee pricing, Indian city support, and a free plan to get started.
+
+For global job searches (US/UK), LazyApply + Simplify combined works reasonably well, but expect to pay in USD.
+
+[Start Your Free Job Search Automation →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "how-to-beat-ats-applicant-tracking-system",
+    title: "How to Beat ATS in 2025 — Get Your Resume Past the Robot",
+    date: "June 15, 2025",
+    readTime: "7 min read",
+    category: "Resume Tips",
+    excerpt: "75% of resumes are rejected by ATS software before a human ever reads them. Here's exactly how to format and write your resume to pass ATS filters and reach the hiring manager.",
+    content: `
+## What Is ATS and Why Does It Matter?
+
+ATS stands for Applicant Tracking System — the software companies use to filter job applications before a human recruiter reviews them. Companies like Infosys, TCS, Wipro, Amazon India, and even most startups use ATS to manage the flood of applications they receive.
+
+The hard truth: **75% of resumes are rejected automatically by ATS** — never seen by a human.
+
+If your resume isn't ATS-friendly, it doesn't matter how qualified you are. It goes straight to the trash folder.
+
+## How ATS Works
+
+1. You apply for a job
+2. Your resume is uploaded to the company's ATS (Workday, Greenhouse, Lever, iCIMS, etc.)
+3. The ATS scans your resume for keywords, skills, and experience
+4. It gives your resume a "match score" against the job description
+5. Only resumes above a threshold score are shown to the recruiter
+
+## 10 Rules for an ATS-Proof Resume
+
+### Rule 1: Use Standard Section Headings
+ATS looks for specific headings. Use exactly these:
+- **Work Experience** (not "My Career Journey")
+- **Education** (not "Academic Background")
+- **Skills** (not "What I Bring to the Table")
+- **Summary** or **Professional Summary**
+
+### Rule 2: No Tables, Columns, or Text Boxes
+Most ATS cannot read text inside tables or columns. A two-column resume looks great to humans but reads as gibberish to ATS. Use a simple single-column layout.
+
+### Rule 3: Match Keywords from the Job Description
+This is the most important rule. Copy the exact keywords from the job posting into your resume where they're genuinely applicable.
+
+Example: If a job says "proficient in Python and REST APIs", your resume should say "Python" and "REST APIs" — not "server-side scripting" or "web services".
+
+### Rule 4: Use Standard Fonts
+Stick to: Arial, Calibri, Georgia, Times New Roman, or Helvetica. Decorative fonts confuse ATS parsers.
+
+### Rule 5: Avoid Headers and Footers
+Many ATS systems skip content in headers and footers. Put your contact information in the main body of the resume.
+
+### Rule 6: Spell Out Acronyms
+Write "Search Engine Optimization (SEO)" not just "SEO". Some ATS may not recognize abbreviations.
+
+### Rule 7: Use .docx or PDF format
+Most ATS prefer .docx (Microsoft Word). If submitting PDF, make sure it's a text-based PDF, not a scanned image.
+
+### Rule 8: Quantify Everything
+ATS and humans both love numbers. Instead of:
+- "Managed a team" → "Managed a team of 12 engineers"
+- "Improved sales" → "Increased quarterly sales by 34%"
+- "Handled customer complaints" → "Resolved 50+ customer escalations per week with 92% satisfaction rate"
+
+### Rule 9: Include a Skills Section
+Have a dedicated "Skills" section that lists your technical and soft skills as a simple bulleted or comma-separated list. ATS specifically looks for this section.
+
+### Rule 10: Tailor for Every Job
+One resume doesn't fit all. Ideally, you adjust keywords for each job you apply to. This is where AI tools like AutoApply AI automate the process — the AI reads each job description and updates your resume keywords automatically before each application.
+
+## ATS Checklist Before You Apply
+
+- [ ] Single-column layout
+- [ ] Standard section headings
+- [ ] No tables, text boxes, or images
+- [ ] Keywords from the job description included
+- [ ] Contact info in body (not header/footer)
+- [ ] Quantified achievements
+- [ ] .docx or proper PDF format
+- [ ] Skills section present
+
+## Use AI to Automate ATS Optimization
+
+Checking every resume against every job description manually is exhausting. AutoApply AI does this automatically — it reads the job description, identifies the key skills and keywords, and adjusts your resume before sending each application.
+
+[Let AI Optimize Your Resume Automatically →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "naukri-vs-linkedin-india-job-search",
+    title: "Naukri vs LinkedIn for Job Search in India — Which is Better in 2025?",
+    date: "June 10, 2025",
+    readTime: "5 min read",
+    category: "Job Search Strategy",
+    excerpt: "Should you focus on Naukri or LinkedIn for your job search in India? We break down which platform works better for which roles, salary levels, and experience levels.",
+    content: `
+## Naukri vs LinkedIn: The Eternal Indian Job Seeker Debate
+
+If you're job hunting in India, you're almost certainly on both Naukri and LinkedIn. But where should you focus your energy? The answer depends on your role, experience level, and industry.
+
+Here's a complete breakdown.
+
+## Naukri.com
+
+### Who it's best for:
+- Freshers and 0-5 years experience
+- IT/Software roles in Tier 2 and Tier 3 cities
+- Government and PSU job seekers
+- BPO, operations, and non-tech roles
+- Mass recruitment from Indian companies (Wipro, Infosys, HCL, TCS)
+
+### Strengths:
+- Largest database of Indian job postings (90 lakh+ active jobs)
+- Strong recruiter presence from Indian companies
+- Resume database — recruiters actively search Naukri resumes
+- Naukri Score helps your profile get discovered
+- Job alerts via email and SMS
+
+### Weaknesses:
+- Lower quality startups and product companies
+- Less effective for roles above ₹20 LPA
+- Many spam/fake job postings
+- UI/UX is outdated
+
+### Best strategy on Naukri:
+- Keep your profile 100% complete
+- Update your resume every 2-3 weeks (it boosts visibility in recruiter searches)
+- Set up job alerts for your exact role + city
+- Apply to jobs within the first 24 hours of posting (older postings get less recruiter attention)
+
+---
+
+## LinkedIn
+
+### Who it's best for:
+- 3+ years experience professionals
+- Startup and product company jobs
+- Senior and leadership roles (₹15 LPA+)
+- Global company hiring in India (Google, Microsoft, Amazon, Meta)
+- Roles in marketing, sales, consulting, design, product management
+
+### Strengths:
+- Best platform for networking and referrals
+- Global companies and top-tier Indian startups recruit here
+- LinkedIn Easy Apply makes applying fast
+- Recruiters from MNCs primarily use LinkedIn
+- Personal branding — your profile is your public resume
+
+### Weaknesses:
+- Less effective for freshers (most jobs need 2+ years experience)
+- More competitive — everyone applies here
+- Requires active networking to see full benefits
+- Premium features needed for InMail and advanced search
+
+### Best strategy on LinkedIn:
+- Keep profile updated with a professional photo and headline
+- Post content about your domain (this gets you recruiter attention)
+- Connect with recruiters at your target companies
+- Use Easy Apply for quick applications
+- Ask for referrals from 2nd-degree connections
+
+---
+
+## Head-to-Head Comparison
+
+| Factor | Naukri | LinkedIn |
+|---|---|---|
+| Fresher jobs | ✅ Excellent | ⚠️ Limited |
+| Senior roles (15+ LPA) | ⚠️ Limited | ✅ Excellent |
+| MNC hiring | ❌ Rare | ✅ Strong |
+| Indian IT companies | ✅ Excellent | ✅ Good |
+| Startups | ⚠️ Some | ✅ Excellent |
+| Recruiter cold outreach | ✅ High | ✅ High |
+| Networking | ❌ None | ✅ Core feature |
+| Free features | ✅ Most features free | ⚠️ Limited without premium |
+
+## The Verdict
+
+**Use both — but automate them.**
+
+The winning strategy in 2025 is not choosing between Naukri and LinkedIn, it's applying to both simultaneously. Manually switching between platforms wastes hours every day.
+
+AutoApply AI by MACHMILES applies to LinkedIn, Naukri, Indeed, and 50+ other job boards simultaneously — from a single dashboard. You set your preferences once, and the AI handles applications on every platform at once.
+
+[Apply to Naukri + LinkedIn Simultaneously →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "ai-resume-builder-india-guide",
+    title: "How to Build an AI-Optimized Resume That Gets Shortlisted in India",
+    date: "June 5, 2025",
+    readTime: "9 min read",
+    category: "Resume Tips",
+    excerpt: "Step-by-step guide to building a resume that passes ATS filters, impresses Indian recruiters, and gets you more interview calls — using AI to do the heavy lifting.",
+    content: `
+## Why Most Indian Resumes Don't Get Shortlisted
+
+Recruiters at top Indian companies — Flipkart, Swiggy, Razorpay, Zepto, and the big IT firms — receive 500-1000 applications for a single job posting. They spend an average of **6 seconds** on each resume.
+
+Your resume has 6 seconds to make an impression.
+
+Here's how to build one that works.
+
+## Section 1: Contact Information
+
+Keep it clean and simple at the top:
+
+- **Full Name** (large, bold)
+- **Phone number** (with +91 prefix)
+- **Email** (professional — yourname@gmail.com, not coolboy1999@yahoo.com)
+- **LinkedIn profile URL** (shortened: linkedin.com/in/yourname)
+- **GitHub** (if you're in tech)
+- **City, State** (no need for full address)
+
+Do NOT include: Date of birth, religion, marital status, gender, photo (unless specifically asked). These are common mistakes in Indian resumes that modern companies consider red flags.
+
+## Section 2: Professional Summary
+
+Write 3-4 sentences that immediately tell the recruiter:
+1. What you do (your role and years of experience)
+2. What you're best at (your top 2-3 skills)
+3. What you've achieved (one strong quantified result)
+4. What you're looking for (optional)
+
+**Example (bad):**
+"I am a hard-working and dedicated software engineer who is passionate about technology and looking for new opportunities to grow."
+
+**Example (good):**
+"Backend engineer with 4 years of experience building scalable APIs in Node.js and Python. Led migration of monolith to microservices at FinTech startup, reducing p99 latency by 60%. Passionate about distributed systems and high-throughput data pipelines."
+
+## Section 3: Work Experience
+
+This is the most important section. Use this exact format for each role:
+
+**Company Name** | Job Title | City | Month Year – Month Year
+
+- Bullet point starting with a strong action verb
+- Quantified result wherever possible
+- Relevant keywords from your target job descriptions
+
+**Strong action verbs for tech roles:** Built, Designed, Architected, Optimized, Reduced, Increased, Led, Deployed, Migrated, Automated
+
+**Strong action verbs for non-tech roles:** Managed, Grew, Generated, Negotiated, Streamlined, Launched, Coordinated, Achieved, Exceeded, Delivered
+
+### How many bullet points?
+- Most recent role: 4-6 bullets
+- Previous roles: 2-4 bullets
+- Older roles (3+ years ago): 1-2 bullets or remove
+
+## Section 4: Skills
+
+List your skills in a simple format — either bullet points or comma-separated. Group them logically:
+
+**Languages:** Python, JavaScript, Java, SQL
+**Frameworks:** React, Node.js, Django, Spring Boot
+**Tools:** Git, Docker, Kubernetes, Jira, Figma
+**Databases:** PostgreSQL, MongoDB, Redis
+
+For non-tech professionals:
+**Core Skills:** Project Management, Stakeholder Communication, Data Analysis
+**Tools:** MS Excel, Salesforce, HubSpot, Tableau, Power BI
+**Certifications:** PMP, Google Analytics, AWS Cloud Practitioner
+
+## Section 5: Education
+
+For most professionals with 2+ years of experience, education goes AFTER work experience.
+
+Format:
+**Degree Name** | College Name | Year of Graduation | CGPA (if 7.5+)
+
+Example:
+B.Tech Computer Science | IIT Roorkee | 2020 | 8.4 CGPA
+
+If you're a fresher, put Education first and expand it — include relevant coursework, projects, internships, and achievements.
+
+## Section 6: Projects (For Freshers and Tech Roles)
+
+2-4 projects with:
+- Project name + tech stack used
+- What problem it solves
+- Key metric (users, performance, etc.)
+- GitHub link
+
+## AI Tools to Build and Optimize Your Resume
+
+### AutoApply AI Resume Builder
+At machmiles.com, the AI resume builder:
+- Generates a complete ATS-friendly resume from your profile
+- Offers multiple professional templates
+- Auto-tailors your resume for each job you apply to
+- Gives you an ATS match score before each application
+
+### Other tools to use alongside:
+- **Grammarly** — for writing quality
+- **Hemingway App** — for clarity and readability
+- **Jobscan** — to check ATS keyword match score
+
+## Resume Checklist
+
+Before sending any application, verify:
+
+- [ ] One page (if under 8 years experience), max two pages
+- [ ] Single column layout (ATS safe)
+- [ ] Professional email address
+- [ ] No photo, DOB, marital status, religion
+- [ ] Quantified achievements in every role
+- [ ] Keywords from the target job description included
+- [ ] No spelling or grammar errors
+- [ ] Contact info in body (not header)
+- [ ] Saved as .docx or proper PDF
+
+## The Shortcut: Let AI Do This For Every Job
+
+Tailoring a resume for every application takes 20-30 minutes per job. AutoApply AI does it automatically — it reads the job description, identifies the keywords the ATS is looking for, adjusts your resume, and sends the application. All without you lifting a finger.
+
+[Build Your AI-Optimized Resume Free →](https://www.machmiles.com)
+    `,
+  },
+];
+
+// ─── BLOG COMPONENTS ──────────────────────────────────────────────────────────
+function renderMarkdown(md) {
+  // Simple markdown renderer for blog posts
+  const lines = md.trim().split("\n");
+  const elements = [];
+  let i = 0;
+  let key = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.startsWith("## ")) {
+      elements.push(<h2 key={key++} style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.3rem,2.5vw,1.6rem)", color: "#1e293b", margin: "2.5rem 0 1rem", letterSpacing: "-0.02em" }}>{line.slice(3)}</h2>);
+    } else if (line.startsWith("### ")) {
+      elements.push(<h3 key={key++} style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.15rem", color: "#1e293b", margin: "2rem 0 0.75rem" }}>{line.slice(4)}</h3>);
+    } else if (line.startsWith("#### ")) {
+      elements.push(<h4 key={key++} style={{ fontWeight: 700, fontSize: "1rem", color: "#334155", margin: "1.5rem 0 0.5rem" }}>{line.slice(5)}</h4>);
+    } else if (line.startsWith("| ")) {
+      // Table — collect all table rows
+      const tableLines = [];
+      while (i < lines.length && lines[i].startsWith("|")) {
+        if (!lines[i].match(/^\|[-| ]+\|$/)) tableLines.push(lines[i]);
+        i++;
+      }
+      const [headerRow, ...bodyRows] = tableLines;
+      const headers = headerRow.split("|").filter(Boolean).map(h => h.trim());
+      elements.push(
+        <div key={key++} style={{ overflowX: "auto", margin: "1.5rem 0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+            <thead>
+              <tr>{headers.map((h, j) => <th key={j} style={{ background: "#f1f5f9", padding: "10px 14px", textAlign: "left", fontWeight: 700, color: "#1e293b", borderBottom: "2px solid #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row, ri) => {
+                const cells = row.split("|").filter(Boolean).map(c => c.trim());
+                return <tr key={ri} style={{ borderBottom: "1px solid #e2e8f0" }}>{cells.map((c, ci) => <td key={ci} style={{ padding: "10px 14px", color: "#475569" }}>{c}</td>)}</tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    } else if (line.startsWith("- [ ] ")) {
+      // Checklist
+      const items = [];
+      while (i < lines.length && lines[i].startsWith("- [ ] ")) {
+        items.push(lines[i].slice(6));
+        i++;
+      }
+      elements.push(
+        <ul key={key++} style={{ listStyle: "none", padding: 0, margin: "1rem 0" }}>
+          {items.map((item, j) => (
+            <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "6px 0", color: "#475569", fontSize: "0.95rem" }}>
+              <span style={{ width: 18, height: 18, border: "2px solid #3B82F6", borderRadius: 4, flexShrink: 0, marginTop: 2, display: "inline-block" }} />
+              {item}
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    } else if (line.startsWith("- ")) {
+      // Bullet list — collect consecutive bullets
+      const items = [];
+      while (i < lines.length && lines[i].startsWith("- ")) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      elements.push(
+        <ul key={key++} style={{ paddingLeft: "1.5rem", margin: "0.75rem 0 1rem" }}>
+          {items.map((item, j) => <li key={j} style={{ color: "#475569", lineHeight: 1.75, marginBottom: 4, fontSize: "0.95rem" }} dangerouslySetInnerHTML={{ __html: inlineMarkdown(item) }} />)}
+        </ul>
+      );
+      continue;
+    } else if (line.match(/^\d+\. /)) {
+      // Ordered list
+      const items = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        items.push(lines[i].replace(/^\d+\. /, ""));
+        i++;
+      }
+      elements.push(
+        <ol key={key++} style={{ paddingLeft: "1.5rem", margin: "0.75rem 0 1rem" }}>
+          {items.map((item, j) => <li key={j} style={{ color: "#475569", lineHeight: 1.75, marginBottom: 4, fontSize: "0.95rem" }} dangerouslySetInnerHTML={{ __html: inlineMarkdown(item) }} />)}
+        </ol>
+      );
+      continue;
+    } else if (line.startsWith("---")) {
+      elements.push(<hr key={key++} style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "2rem 0" }} />);
+    } else if (line.startsWith("**") && line.endsWith("**") && !line.slice(2).includes("**")) {
+      elements.push(<p key={key++} style={{ fontWeight: 700, color: "#1e293b", margin: "1rem 0 0.25rem", fontSize: "0.95rem" }}>{line.slice(2, -2)}</p>);
+    } else if (line.trim() === "") {
+      // skip
+    } else {
+      elements.push(<p key={key++} style={{ color: "#475569", lineHeight: 1.85, margin: "0 0 1rem", fontSize: "0.97rem" }} dangerouslySetInnerHTML={{ __html: inlineMarkdown(line) }} />);
+    }
+    i++;
+  }
+  return elements;
+}
+
+function inlineMarkdown(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:0.88em;color:#0f172a">$1</code>')
+    .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, '<a href="$2" style="color:#3B82F6;text-decoration:underline" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function BlogPage({ onBack }) {
+  const [selected, setSelected] = useState(null);
+
+  const handleSelect = (post) => {
+    setSelected(post);
+    window.history.pushState(null, "", `/blog/${post.slug}`);
+    document.title = `${post.title} — MACHMILES Blog`;
+    window.scrollTo(0, 0);
+  };
+
+  const handleBack = () => {
+    if (selected) {
+      setSelected(null);
+      window.history.pushState(null, "", "/blog");
+      document.title = "Blog — AutoApply AI Tips & Job Search Guides | MACHMILES";
+      return;
+    }
+    onBack();
+  };
+
+  const CATEGORY_COLORS = {
+    "Job Search Strategy": { bg: "#eff6ff", text: "#1d4ed8" },
+    "Tools & Reviews": { bg: "#f0fdf4", text: "#15803d" },
+    "Resume Tips": { bg: "#fdf4ff", text: "#7e22ce" },
+  };
+
+  const nav = (
+    <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 }}>
+      <button onClick={() => { window.history.pushState(null, "", "/"); onBack(); }} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+        <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+      </button>
+      <button onClick={handleBack} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 18px", fontSize: "0.88rem", cursor: "pointer", color: "#64748b" }}>← {selected ? "All Articles" : "Back to Home"}</button>
+    </nav>
+  );
+
+  // Individual post view
+  if (selected) {
+    const cat = CATEGORY_COLORS[selected.category] || { bg: "#f1f5f9", text: "#334155" };
+    return (
+      <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif" }}>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+        {nav}
+        <div style={{ background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4rem 5% 3rem", textAlign: "center" }}>
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
+            <div style={{ display: "inline-block", background: cat.bg, color: cat.text, borderRadius: 100, padding: "5px 16px", fontSize: "0.78rem", fontWeight: 700, marginBottom: "1.25rem" }}>{selected.category}</div>
+            <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", color: "#fff", margin: "0 0 1.25rem", lineHeight: 1.2, letterSpacing: "-0.02em" }}>{selected.title}</h1>
+            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.88rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+              <span>{selected.date}</span><span>·</span><span>{selected.readTime}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "3.5rem 5%" }}>
+          {renderMarkdown(selected.content)}
+          <div style={{ marginTop: "3rem", padding: "2rem", background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 16, textAlign: "center", border: "1px solid #bfdbfe" }}>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.3rem", color: "#1e293b", marginBottom: "0.75rem" }}>Start Applying Automatically Today</div>
+            <p style={{ color: "#475569", marginBottom: "1.25rem", fontSize: "0.95rem" }}>Join thousands of Indian job seekers using AutoApply AI to get more interviews with less effort.</p>
+            <button onClick={onBack} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "12px 32px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" }}>Get Started Free →</button>
+          </div>
+          <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "2rem" }}>
+            <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: "1rem" }}>More Articles</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {BLOG_POSTS.filter(p => p.slug !== selected.slug).slice(0, 3).map(p => (
+                <button key={p.slug} onClick={() => handleSelect(p)} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 18px", textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "0.92rem" }}>{p.title}</span>
+                  <span style={{ color: "#94a3b8", fontSize: "0.8rem", flexShrink: 0, marginLeft: 12 }}>→</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Blog listing view
+  return (
+    <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap'); .blog-card:hover{transform:translateY(-3px);box-shadow:0 8px 32px rgba(59,130,246,0.12)!important} .blog-card{transition:transform 0.2s,box-shadow 0.2s}`}</style>
+      {nav}
+      <div style={{ background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4rem 5% 3.5rem", textAlign: "center" }}>
+        <div style={{ display: "inline-block", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#a5b4fc", fontWeight: 700, marginBottom: "1.25rem" }}>📚 Career Guides & Job Search Tips</div>
+        <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(2rem,5vw,3rem)", color: "#fff", margin: "0 0 1rem", letterSpacing: "-0.03em" }}>The AutoApply AI Blog</h1>
+        <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "1.05rem", maxWidth: 540, margin: "0 auto" }}>Practical guides to help you get more interviews, optimize your resume, and automate your job search in India.</p>
+      </div>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "3.5rem 5%" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(290px,1fr))", gap: "1.5rem" }}>
+          {BLOG_POSTS.map(post => {
+            const cat = CATEGORY_COLORS[post.category] || { bg: "#f1f5f9", text: "#334155" };
+            return (
+              <button key={post.slug} className="blog-card" onClick={() => handleSelect(post)}
+                style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "1.75rem", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "inline-block", background: cat.bg, color: cat.text, borderRadius: 100, padding: "4px 12px", fontSize: "0.75rem", fontWeight: 700 }}>{post.category}</div>
+                <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.05rem", color: "#1e293b", margin: 0, lineHeight: 1.4 }}>{post.title}</h2>
+                <p style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.6, margin: 0, flex: 1 }}>{post.excerpt}</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ color: "#94a3b8", fontSize: "0.78rem" }}>{post.date} · {post.readTime}</span>
+                  <span style={{ color: "#3B82F6", fontSize: "0.85rem", fontWeight: 600 }}>Read →</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: "4rem", background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 20, padding: "3rem", textAlign: "center", border: "1px solid #bfdbfe" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.5rem", color: "#1e293b", marginBottom: "0.75rem" }}>Ready to Automate Your Job Search?</div>
+          <p style={{ color: "#475569", marginBottom: "1.5rem" }}>Join 2,800+ Indian job seekers applying to 100+ jobs per day on autopilot.</p>
+          <button onClick={onBack} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 36px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" }}>Get Started Free →</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WhiteLabelPage({ onBack }) {
   return <PartnerPage onBack={onBack}
     title="White-Label AI Recruitment Platform"
@@ -5511,6 +6230,7 @@ export default function App() {
     if (path === "/career-coaches") { setScreen("career-coaches"); return; }
     if (path === "/hr-employers") { setScreen("hr-employers"); return; }
     if (path === "/campus-connect") { setScreen("campus-connect"); return; }
+    if (path === "/blog" || path.startsWith("/blog/")) { setScreen("blog"); return; }
     const POLICY_PATHS = {
       "/privacy-policy": "privacy",
       "/terms": "terms",
@@ -5588,6 +6308,7 @@ export default function App() {
       "career-coaches": { title: "Career Coaches — Partner with MACHMILES AutoApply AI", desc: "Partner with MACHMILES to offer your clients AI-powered job application automation. Scale your career coaching business." },
       "hr-employers":  { title: "For HR & Employers — Post Jobs on MACHMILES AutoApply AI", desc: "Reach thousands of active job seekers using MACHMILES AutoApply AI. Find the right candidates faster with our AI matching platform." },
       "campus-connect": { title: "Campus Connect — AI Job Placement for Colleges | MACHMILES", desc: "MACHMILES Campus Connect helps students and freshers get placed faster with AI-powered job application automation." },
+      blog:            { title: "Blog — AI Job Search Tips, Resume Guides & Career Advice | MACHMILES", desc: "Practical guides for Indian job seekers: how to auto apply to 100 jobs, beat ATS, optimize your resume, and land more interviews using AI." },
     };
     const m = META[screen];
     if (m) {
@@ -5613,6 +6334,7 @@ export default function App() {
   const goToPricing = () => { window.history.pushState(null, "", "/Pricing"); setScreen("pricing"); };
   const goToDonations = () => { window.history.pushState(null, "", "/donations"); setScreen("donations"); };
 
+  if (screen === "blog") return <BlogPage onBack={goHome} />;
   if (screen === "aboutus") return <AboutPage onBack={goHome} />;
   if (screen === "white-label") return <WhiteLabelPage onBack={goHome} />;
   if (screen === "affiliate") return <AffiliatePage onBack={goHome} />;
