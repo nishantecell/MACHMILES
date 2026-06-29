@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     // Get profile
     const { data: profile } = await supabase
       .from('profiles')
-      .select('*')
+      .select('full_name, plan, role, onboarded')
       .eq('id', user.id)
       .single();
 
@@ -42,7 +42,8 @@ export default async function handler(req, res) {
     if (onboarded === false && user.created_at) {
       const ageMs = Date.now() - new Date(user.created_at).getTime();
       if (ageMs > 30 * 60 * 1000) {
-        await supabase.from('profiles').update({ onboarded: true }).eq('id', user.id);
+        // Fire-and-forget — don't block login response
+        supabase.from('profiles').update({ onboarded: true }).eq('id', user.id).then(() => {}).catch(() => {});
         onboarded = true;
       }
     }
