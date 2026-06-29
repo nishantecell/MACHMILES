@@ -5609,6 +5609,341 @@ function CampusConnectPage({ onBack }) {
   />;
 }
 
+// ─── CITY LANDING PAGES ───────────────────────────────────────────────────────
+const CITY_DATA = {
+  bangalore: {
+    name: "Bangalore", state: "Karnataka", slug: "bangalore",
+    title: "AI Job Application Automation in Bangalore — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Bangalore daily. AI-powered job automation for Bangalore's tech, startup, and IT job market.",
+    roles: ["Software Engineer", "Data Scientist", "Product Manager", "DevOps Engineer", "UX Designer", "Backend Developer", "Full Stack Developer", "ML Engineer"],
+    companies: ["Flipkart", "Swiggy", "Zomato", "Razorpay", "Zepto", "PhonePe", "Meesho", "Dunzo", "Byju's", "Ola"],
+    stat: "4.2 lakh", jobStat: "tech jobs posted monthly in Bangalore",
+    intro: "Bangalore is India's Silicon Valley — home to 67% of India's top tech companies, 12,000+ startups, and over 4 lakh tech job openings every month. The competition is fierce. The companies that get your attention are the ones that apply early, often, and with a tailored resume. AutoApply AI was built for exactly this market.",
+  },
+  mumbai: {
+    name: "Mumbai", state: "Maharashtra", slug: "mumbai",
+    title: "AI Job Application Automation in Mumbai — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Mumbai daily. AI-powered job automation for Mumbai's finance, media, and corporate job market.",
+    roles: ["Financial Analyst", "Investment Banker", "Marketing Manager", "Operations Lead", "Sales Executive", "Business Analyst", "Content Strategist", "HR Manager"],
+    companies: ["HDFC Bank", "Tata Consultancy", "Reliance", "Aditya Birla", "Godrej", "Bombay Stock Exchange", "Zee Media", "BookMyShow", "Urban Company", "ICICI Bank"],
+    stat: "2.8 lakh", jobStat: "jobs posted monthly in Mumbai",
+    intro: "Mumbai is India's financial capital and the hub for banking, BFSI, media, and corporate roles. From Wall Street-style finance jobs to creative roles in Bollywood and advertising, the city offers unmatched opportunity — if you can cut through the noise. AutoApply AI ensures your application reaches every relevant company before the posting expires.",
+  },
+  delhi: {
+    name: "Delhi NCR", state: "Delhi", slug: "delhi",
+    title: "AI Job Application Automation in Delhi NCR — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Delhi NCR daily. AI-powered job automation for Delhi's government, IT, and corporate job market.",
+    roles: ["Government Relations", "Policy Analyst", "Software Developer", "Consultant", "Digital Marketer", "IT Manager", "Legal Associate", "Civil Services Prep"],
+    companies: ["HCL Technologies", "Paytm", "IndiaMart", "Naukri (Info Edge)", "PolicyBazaar", "Lenskart", "MakeMyTrip", "OYO", "Snapdeal", "Delhivery"],
+    stat: "3.1 lakh", jobStat: "jobs posted monthly in Delhi NCR",
+    intro: "Delhi NCR is India's government and consulting capital, with a rapidly growing startup ecosystem in Gurugram and Noida. The region hosts headquarters of major IT companies, policy organizations, and some of India's fastest-growing startups. AutoApply AI scans all major job boards for Delhi NCR roles and applies automatically on your behalf.",
+  },
+  hyderabad: {
+    name: "Hyderabad", state: "Telangana", slug: "hyderabad",
+    title: "AI Job Application Automation in Hyderabad — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Hyderabad daily. AI-powered job automation for Hyderabad's IT, pharma, and tech job market.",
+    roles: ["Software Engineer", "QA Engineer", "Data Analyst", "Cloud Architect", "SAP Consultant", "Pharma Researcher", "Network Engineer", "Cybersecurity Analyst"],
+    companies: ["Microsoft India", "Google Hyderabad", "Amazon India", "Apple India", "Meta India", "Dr. Reddy's", "Infosys", "Wipro", "Cyient", "Gland Pharma"],
+    stat: "2.3 lakh", jobStat: "jobs posted monthly in Hyderabad",
+    intro: "Hyderabad's HITEC City has become the preferred destination for global tech giants — Microsoft, Google, Amazon, Apple, and Meta all have major development centers here. The pharma corridor adds another dimension. With so many MNC opportunities, the competition is global-level. AutoApply AI helps you apply faster than any other candidate.",
+  },
+  pune: {
+    name: "Pune", state: "Maharashtra", slug: "pune",
+    title: "AI Job Application Automation in Pune — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Pune daily. AI-powered job automation for Pune's IT, automotive, and manufacturing job market.",
+    roles: ["Embedded Engineer", "Automotive Engineer", "Java Developer", "Test Engineer", "IT Consultant", "Data Engineer", "VLSI Engineer", "Project Manager"],
+    companies: ["Tata Motors", "Bajaj Auto", "Persistent Systems", "Cognizant Pune", "Infosys Pune", "Tech Mahindra", "Capgemini", "KPIT Technologies", "Cummins India", "Volkswagen India"],
+    stat: "1.8 lakh", jobStat: "jobs posted monthly in Pune",
+    intro: "Pune is a unique blend of IT services, automotive engineering, and manufacturing — making it one of India's most diverse job markets. Whether you're an embedded systems engineer targeting automotive companies or an IT professional at one of the many MNC campuses, AutoApply AI covers all verticals and applies to matching roles across every job board.",
+  },
+  chennai: {
+    name: "Chennai", state: "Tamil Nadu", slug: "chennai",
+    title: "AI Job Application Automation in Chennai — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Chennai daily. AI-powered job automation for Chennai's IT, manufacturing, and services job market.",
+    roles: ["Java Developer", "Manufacturing Engineer", "IT Analyst", "Automobile Engineer", "Hardware Engineer", "Supply Chain Manager", "SAP Consultant", "Network Administrator"],
+    companies: ["Zoho", "Freshworks", "TVS Motors", "Hyundai India", "Ford India", "Ashok Leyland", "Cognizant Chennai", "Wipro Chennai", "HCL Chennai", "Ramco Systems"],
+    stat: "1.5 lakh", jobStat: "jobs posted monthly in Chennai",
+    intro: "Chennai is the Detroit of India — a powerhouse for automobile manufacturing — while simultaneously being home to global IT giants and product companies like Zoho and Freshworks. AutoApply AI is especially effective in Chennai where Naukri and LinkedIn both carry high volumes of local listings that change daily.",
+  },
+};
+
+function CityLandingPage({ city, onBack, onSignup }) {
+  const d = CITY_DATA[city];
+  if (!d) return null;
+
+  useEffect(() => {
+    document.title = d.title;
+    const descTag = document.querySelector('meta[name="description"]');
+    if (descTag) descTag.setAttribute("content", d.desc);
+  }, []);
+
+  const S = {
+    page: { minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif", color: "#1e293b" },
+    nav: { position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 },
+    hero: { background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4.5rem 5% 4rem", textAlign: "center" },
+    section: { maxWidth: 960, margin: "0 auto", padding: "4rem 5%" },
+    chip: { display: "inline-block", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#a5b4fc", fontWeight: 700, marginBottom: "1.25rem" },
+    h1: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.8rem,5vw,3rem)", color: "#fff", margin: "0 0 1.25rem", letterSpacing: "-0.03em", lineHeight: 1.15 },
+    sub: { color: "rgba(255,255,255,0.6)", fontSize: "1.05rem", maxWidth: 600, margin: "0 auto 2rem", lineHeight: 1.75 },
+    cta: { background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 36px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" },
+    h2: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", margin: "0 0 1rem", letterSpacing: "-0.02em" },
+    card: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "1.25rem 1.5rem" },
+    stat: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem", color: "#3B82F6", marginBottom: 4 },
+  };
+
+  return (
+    <div style={S.page}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+      <nav style={S.nav}>
+        <button onClick={onBack} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+        </button>
+        <button onClick={onBack} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 18px", fontSize: "0.88rem", cursor: "pointer", color: "#64748b" }}>← Back to Home</button>
+      </nav>
+
+      <div style={S.hero}>
+        <div style={S.chip}>📍 {d.name}, {d.state}</div>
+        <h1 style={S.h1}>AI Job Search Automation<br />in {d.name}</h1>
+        <p style={S.sub}>Apply to 100+ {d.name} jobs daily — automatically. Our AI searches LinkedIn, Naukri, Indeed & 50+ boards and applies on your behalf, around the clock.</p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <button style={S.cta} onClick={onSignup}>Start Applying in {d.name} — Free</button>
+          <a href="/blog" style={{ ...S.cta, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", textDecoration: "none", display: "inline-block" }}>Read Job Search Guides</a>
+        </div>
+      </div>
+
+      <div style={S.section}>
+        {/* Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: "1.5rem", marginBottom: "4rem" }}>
+          {[
+            { val: d.stat, label: d.jobStat },
+            { val: "50+", label: "Job boards scanned automatically" },
+            { val: "100+", label: "Applications sent per day per user" },
+            { val: "3x", label: "More interview calls vs manual applying" },
+          ].map((s, i) => (
+            <div key={i} style={{ ...S.card, textAlign: "center" }}>
+              <div style={S.stat}>{s.val}</div>
+              <div style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.5 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Intro */}
+        <div style={{ marginBottom: "4rem" }}>
+          <div style={{ display: "inline-block", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 100, padding: "5px 16px", fontSize: "0.78rem", color: "#1d4ed8", fontWeight: 700, marginBottom: "1rem" }}>About the {d.name} Job Market</div>
+          <h2 style={S.h2}>Why {d.name} Job Seekers Use AutoApply AI</h2>
+          <p style={{ color: "#475569", lineHeight: 1.85, fontSize: "1rem" }}>{d.intro}</p>
+        </div>
+
+        {/* Top Roles */}
+        <div style={{ marginBottom: "4rem" }}>
+          <h2 style={S.h2}>Top Roles We Auto-Apply For in {d.name}</h2>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: "1rem" }}>
+            {d.roles.map(r => (
+              <span key={r} style={{ background: "#eff6ff", color: "#1d4ed8", borderRadius: 100, padding: "8px 18px", fontSize: "0.88rem", fontWeight: 600 }}>{r}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Companies */}
+        <div style={{ marginBottom: "4rem" }}>
+          <h2 style={S.h2}>Top Companies Hiring in {d.name}</h2>
+          <p style={{ color: "#64748b", marginBottom: "1.25rem" }}>AutoApply AI finds and applies to open roles at these companies and hundreds more — automatically.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: "0.75rem" }}>
+            {d.companies.map(c => (
+              <div key={c} style={{ ...S.card, textAlign: "center", fontWeight: 600, color: "#334155", fontSize: "0.9rem" }}>{c}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* How It Works */}
+        <div style={{ marginBottom: "4rem" }}>
+          <h2 style={S.h2}>How It Works for {d.name} Job Seekers</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "1.25rem", marginTop: "1.5rem" }}>
+            {[
+              { step: "1", title: "Upload Your Resume", desc: "Upload once. Our AI parses your skills, experience, and targets." },
+              { step: "2", title: "Set Preferences", desc: `Choose ${d.name} as your location, pick roles, salary range, and notice period.` },
+              { step: "3", title: "AI Applies 24/7", desc: "The AI applies to matching jobs round the clock — even while you sleep." },
+              { step: "4", title: "Get Interviews", desc: "Track all applications and responses in one dashboard. Reply fast." },
+            ].map(s => (
+              <div key={s.step} style={{ ...S.card, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ width: 36, height: 36, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "1rem" }}>{s.step}</div>
+                <div style={{ fontWeight: 700, color: "#1e293b", fontSize: "0.95rem" }}>{s.title}</div>
+                <div style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.6 }}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div style={{ background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 20, padding: "3rem", textAlign: "center", border: "1px solid #bfdbfe" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", marginBottom: "0.75rem" }}>Start Your Automated Job Search in {d.name}</div>
+          <p style={{ color: "#475569", marginBottom: "1.5rem" }}>Free plan available. No credit card required. Start getting more interviews in {d.name} today.</p>
+          <button style={S.cta} onClick={onSignup}>Get Started Free →</button>
+        </div>
+
+        {/* Internal links */}
+        <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "2rem" }}>
+          <div style={{ color: "#94a3b8", fontSize: "0.8rem", marginBottom: "0.75rem" }}>Other cities</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {Object.values(CITY_DATA).filter(c => c.slug !== city).map(c => (
+              <a key={c.slug} href={`/jobs-${c.slug}`} style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>AI Job Search in {c.name} →</a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── KEYWORD LANDING PAGES ────────────────────────────────────────────────────
+const KEYWORD_PAGES = {
+  "auto-apply-jobs-india": {
+    title: "Auto Apply Jobs in India — AI-Powered Automatic Job Applications",
+    desc: "Automatically apply to 100+ jobs per day in India. Upload resume once, AI applies to LinkedIn, Naukri, Indeed & 50+ job boards without you lifting a finger.",
+    h1: "Auto Apply to Jobs in India — Powered by AI",
+    intro: "Stop spending hours applying to jobs manually. AutoApply AI finds matching jobs across 50+ Indian and global job boards and submits applications automatically — 100+ per day, while you sleep.",
+    features: [
+      { icon: "🤖", title: "Fully Automatic Applications", desc: "AI applies to matching jobs 24/7 — no clicks required from your side." },
+      { icon: "🎯", title: "Smart Job Matching", desc: "Only applies to jobs that match your title, skills, salary, and location preferences." },
+      { icon: "📄", title: "AI Resume Tailoring", desc: "Your resume is auto-customized for each job's keywords before applying." },
+      { icon: "📊", title: "Real-Time Dashboard", desc: "Track every application, company response, and interview invite in one place." },
+      { icon: "🌐", title: "50+ Job Boards", desc: "LinkedIn, Naukri, Indeed, Wellfound, Shine, TimesJobs and more — all covered." },
+      { icon: "🔒", title: "Your Data is Safe", desc: "Bank-grade encryption. We never share your information with third parties." },
+    ],
+    faq: [
+      { q: "Is auto-applying to jobs safe?", a: "Yes. AutoApply AI uses official job application forms — the same process as applying manually. There is no scraping or ToS violation involved." },
+      { q: "How many jobs can I auto-apply to per day?", a: "Free plan: up to 10 applications per day. Pro plan: 100+ per day. Premium plan: unlimited." },
+      { q: "Which job boards are supported?", a: "LinkedIn, Naukri, Indeed, Wellfound, Shine, TimesJobs, Glassdoor, and 50+ more including company career pages." },
+      { q: "Can I review applications before they're sent?", a: "Yes — choose 'Review Mode' and approve each application before it's submitted." },
+    ],
+  },
+  "naukri-auto-apply": {
+    title: "Naukri Auto Apply — Automatically Apply to Naukri Jobs with AI",
+    desc: "Auto apply to Naukri jobs automatically. Our AI scans Naukri daily, finds matching jobs, and applies on your behalf — 100+ applications per day.",
+    h1: "Auto Apply to Naukri Jobs — Let AI Do the Work",
+    intro: "Naukri.com has 90 lakh+ active job listings. Manually going through them takes hours. AutoApply AI scans Naukri every day, identifies roles that match your profile, and applies automatically — with a resume tailored to each job.",
+    features: [
+      { icon: "🔍", title: "Naukri Job Scanning", desc: "AI monitors Naukri 24/7 and picks up new job postings the moment they go live." },
+      { icon: "⚡", title: "Instant Applications", desc: "New job posted? Your application is in within minutes — before hundreds of other candidates." },
+      { icon: "📄", title: "Resume Keyword Matching", desc: "AI matches your resume keywords to each Naukri job description before applying." },
+      { icon: "🔔", title: "Smart Alerts", desc: "Get notified when companies respond to applications — never miss an interview call." },
+      { icon: "📈", title: "Naukri Profile Boost", desc: "We apply using your strongest resume version, maximizing your Naukri profile match score." },
+      { icon: "🎯", title: "Role-Specific Targeting", desc: "Set exact roles, salary bands, and experience levels — only apply to what truly fits." },
+    ],
+    faq: [
+      { q: "Does AutoApply AI work with Naukri?", a: "Yes, Naukri is one of our primary job boards. We scan it daily for new listings matching your profile." },
+      { q: "Will applying to too many Naukri jobs hurt my profile?", a: "No. Each application is tailored to the job, so your match score remains high. Quality is maintained even at volume." },
+      { q: "How often does the AI check Naukri for new jobs?", a: "Every few hours. New listings are picked up quickly so you're always among the first to apply." },
+      { q: "Can I target specific companies on Naukri?", a: "Yes — add target companies in your preferences and AutoApply AI will prioritize their listings." },
+    ],
+  },
+  "linkedin-auto-apply": {
+    title: "LinkedIn Easy Apply Automation — Auto Apply to LinkedIn Jobs in India",
+    desc: "Automate LinkedIn Easy Apply for jobs in India. AI applies to 100+ LinkedIn jobs daily with a tailored resume and cover letter for each role.",
+    h1: "LinkedIn Job Auto Apply — AI Automation for Indian Job Seekers",
+    intro: "LinkedIn Easy Apply lets candidates apply in seconds — which means competition is fierce and volume matters. AutoApply AI applies to LinkedIn Easy Apply jobs automatically, with a resume and cover letter tailored to each role, giving you a competitive edge through both speed and personalization.",
+    features: [
+      { icon: "⚡", title: "LinkedIn Easy Apply Automation", desc: "Auto-applies to all LinkedIn Easy Apply jobs matching your profile — instantly." },
+      { icon: "✉️", title: "AI Cover Letters", desc: "Generates a unique, role-specific cover letter for every LinkedIn application." },
+      { icon: "🎯", title: "Role + Location Targeting", desc: "Filter by job title, location, experience level, company size, and remote preference." },
+      { icon: "👀", title: "Application Tracking", desc: "See every LinkedIn application, its status, and recruiter activity in one dashboard." },
+      { icon: "🔗", title: "LinkedIn Profile Integration", desc: "Uses your LinkedIn profile data alongside your resume for stronger applications." },
+      { icon: "📊", title: "Response Analytics", desc: "Track which job types and companies respond most — optimize your targeting over time." },
+    ],
+    faq: [
+      { q: "Does this work for LinkedIn Easy Apply jobs?", a: "Yes — LinkedIn Easy Apply jobs are our primary target. These have the highest application volume and fastest response rates." },
+      { q: "Can I auto-apply to LinkedIn jobs with a cover letter?", a: "Yes. AutoApply AI generates a unique cover letter for each job based on the job description and your profile." },
+      { q: "Is LinkedIn auto-apply allowed?", a: "AutoApply AI uses official application processes — the same forms you'd fill manually. We do not use unofficial scraping or automation that violates LinkedIn ToS." },
+      { q: "How many LinkedIn jobs can I apply to per day?", a: "Pro plan: 100+ per day. Premium plan: unlimited applications." },
+    ],
+  },
+};
+
+function KeywordLandingPage({ pageKey, onBack, onSignup }) {
+  const d = KEYWORD_PAGES[pageKey];
+  if (!d) return null;
+
+  useEffect(() => {
+    document.title = d.title;
+    const descTag = document.querySelector('meta[name="description"]');
+    if (descTag) descTag.setAttribute("content", d.desc);
+  }, []);
+
+  const S = {
+    page: { minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif", color: "#1e293b" },
+    nav: { position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 },
+    hero: { background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4.5rem 5% 4rem", textAlign: "center" },
+    section: { maxWidth: 960, margin: "0 auto", padding: "4rem 5%" },
+    h2: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", margin: "0 0 1rem", letterSpacing: "-0.02em" },
+    card: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "1.5rem" },
+    cta: { background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 36px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" },
+  };
+
+  return (
+    <div style={S.page}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+      <nav style={S.nav}>
+        <button onClick={onBack} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+        </button>
+        <button onClick={onBack} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 18px", fontSize: "0.88rem", cursor: "pointer", color: "#64748b" }}>← Back to Home</button>
+      </nav>
+
+      <div style={S.hero}>
+        <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.8rem,5vw,2.8rem)", color: "#fff", margin: "0 0 1.25rem", letterSpacing: "-0.03em", lineHeight: 1.15 }}>{d.h1}</h1>
+        <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "1.05rem", maxWidth: 640, margin: "0 auto 2rem", lineHeight: 1.75 }}>{d.intro}</p>
+        <button style={S.cta} onClick={onSignup}>Start for Free — No Credit Card</button>
+      </div>
+
+      <div style={S.section}>
+        {/* Features */}
+        <h2 style={S.h2}>Everything You Get</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: "1.25rem", marginBottom: "4rem" }}>
+          {d.features.map((f, i) => (
+            <div key={i} style={S.card}>
+              <div style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>{f.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: "0.97rem", color: "#1e293b", marginBottom: "0.4rem" }}>{f.title}</div>
+              <div style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.6 }}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* FAQ */}
+        <h2 style={S.h2}>Frequently Asked Questions</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "4rem" }}>
+          {d.faq.map((f, i) => (
+            <div key={i} style={{ ...S.card, background: "#fff" }}>
+              <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: "0.5rem", fontSize: "0.95rem" }}>Q: {f.q}</div>
+              <div style={{ color: "#475569", fontSize: "0.92rem", lineHeight: 1.7 }}>{f.a}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Plans */}
+        <div style={{ background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 20, padding: "3rem", textAlign: "center", border: "1px solid #bfdbfe", marginBottom: "3rem" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", marginBottom: "0.75rem" }}>Start Applying Automatically Today</div>
+          <p style={{ color: "#475569", marginBottom: "1.5rem" }}>Free plan available. Pro from ₹599/month. No credit card required to start.</p>
+          <button style={S.cta} onClick={onSignup}>Get Started Free →</button>
+        </div>
+
+        {/* Internal links */}
+        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "2rem" }}>
+          <div style={{ color: "#94a3b8", fontSize: "0.8rem", marginBottom: "0.75rem" }}>Related pages</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+            <a href="/auto-apply-jobs-india" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Auto Apply Jobs India</a>
+            <a href="/naukri-auto-apply" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Naukri Auto Apply</a>
+            <a href="/linkedin-auto-apply" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>LinkedIn Auto Apply</a>
+            <a href="/blog" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Job Search Guides</a>
+            <a href="/pricing" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Pricing</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ABOUT PAGE ───────────────────────────────────────────────────────────────
 function AboutPage({ onBack }) {
   const css = `
@@ -6231,6 +6566,13 @@ export default function App() {
     if (path === "/hr-employers") { setScreen("hr-employers"); return; }
     if (path === "/campus-connect") { setScreen("campus-connect"); return; }
     if (path === "/blog" || path.startsWith("/blog/")) { setScreen("blog"); return; }
+    // City pages
+    const cityMatch = path.match(/^\/jobs-(bangalore|mumbai|delhi|hyderabad|pune|chennai)$/);
+    if (cityMatch) { setScreen(`city-${cityMatch[1]}`); return; }
+    // Keyword landing pages
+    if (path === "/auto-apply-jobs-india") { setScreen("kw-auto-apply-jobs-india"); return; }
+    if (path === "/naukri-auto-apply") { setScreen("kw-naukri-auto-apply"); return; }
+    if (path === "/linkedin-auto-apply") { setScreen("kw-linkedin-auto-apply"); return; }
     const POLICY_PATHS = {
       "/privacy-policy": "privacy",
       "/terms": "terms",
@@ -6335,6 +6677,14 @@ export default function App() {
   const goToDonations = () => { window.history.pushState(null, "", "/donations"); setScreen("donations"); };
 
   if (screen === "blog") return <BlogPage onBack={goHome} />;
+  // City pages
+  for (const city of ["bangalore","mumbai","delhi","hyderabad","pune","chennai"]) {
+    if (screen === `city-${city}`) return <CityLandingPage city={city} onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
+  }
+  // Keyword pages
+  if (screen === "kw-auto-apply-jobs-india") return <KeywordLandingPage pageKey="auto-apply-jobs-india" onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
+  if (screen === "kw-naukri-auto-apply") return <KeywordLandingPage pageKey="naukri-auto-apply" onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
+  if (screen === "kw-linkedin-auto-apply") return <KeywordLandingPage pageKey="linkedin-auto-apply" onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
   if (screen === "aboutus") return <AboutPage onBack={goHome} />;
   if (screen === "white-label") return <WhiteLabelPage onBack={goHome} />;
   if (screen === "affiliate") return <AffiliatePage onBack={goHome} />;
