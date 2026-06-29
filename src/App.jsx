@@ -295,6 +295,7 @@ async function startPayment(plan, onSuccess, onError) {
 
   // Create order on backend
   const orderRes = await apiPost("/payments", { action: "create-order", plan: plan.name.toLowerCase() });
+  console.log("[Payment] create-order response:", JSON.stringify(orderRes));
   if (!orderRes.success) { onError(orderRes.message || "Failed to create order"); return; }
 
   const { order_id, amount, currency, key_id, user } = orderRes.data;
