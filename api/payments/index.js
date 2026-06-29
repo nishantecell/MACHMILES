@@ -27,9 +27,10 @@ export default async function handler(req, res) {
 
     try {
       if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-        console.error('Missing Razorpay env vars. KEY_ID present:', !!process.env.RAZORPAY_KEY_ID, 'KEY_SECRET present:', !!process.env.RAZORPAY_KEY_SECRET);
-        return err(res, 'Payment gateway not configured. Please contact support.');
+        return err(res, `Payment gateway not configured. KEY_ID present: ${!!process.env.RAZORPAY_KEY_ID}, SECRET present: ${!!process.env.RAZORPAY_KEY_SECRET}`);
       }
+      // Debug: show which key is being used (first 16 chars only)
+      console.log('Using Razorpay KEY_ID:', process.env.RAZORPAY_KEY_ID?.slice(0, 16));
       const razorpay = new Razorpay({
         key_id:     process.env.RAZORPAY_KEY_ID,
         key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -67,7 +68,8 @@ export default async function handler(req, res) {
       console.error('Create order error:', e.message, e.statusCode, JSON.stringify(e.error));
       const detail = e.error?.description || e.error?.field || e.message || 'Unknown error';
       const code = e.statusCode || e.error?.code || '';
-      return err(res, `Payment error [${code}]: ${detail}`);
+      const keyHint = process.env.RAZORPAY_KEY_ID?.slice(0, 16) || 'missing';
+      return err(res, `Payment error [${code}]: ${detail} (key: ${keyHint})`);
     }
   }
 
