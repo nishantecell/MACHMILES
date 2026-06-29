@@ -6566,7 +6566,18 @@ export default function App() {
 
   const checkAndRoute = async (u) => {
     if (!u) { setScreen("landing"); return; }
-    setUser(u);
+
+    // If login response is missing created_at, fetch full profile from /auth/me
+    // so needsOnboarding() has the data it needs to skip onboarding for existing users
+    let fullUser = u;
+    if (!u.created_at) {
+      const me = await apiGet("/auth/me").catch(() => null);
+      if (me?.success && me.data) fullUser = me.data;
+    }
+
+    setCachedUser(fullUser);
+    setUser(fullUser);
+
     const pendingPlan = localStorage.getItem("pending_plan");
     if (pendingPlan) {
       localStorage.removeItem("pending_plan");
@@ -6577,7 +6588,7 @@ export default function App() {
       }
       return;
     }
-    setScreen(needsOnboarding(u) ? "onboarding" : "app");
+    setScreen(needsOnboarding(fullUser) ? "onboarding" : "app");
   };
 
   useEffect(() => {
@@ -6664,22 +6675,30 @@ export default function App() {
     const token = getToken();
     if (!token) { setScreen("landing"); return; }
 
+    // Show cached user instantly — no blank/logout flash on refresh
+    const cached = getCachedUser();
+    if (cached) {
+      setUser(cached);
+      setScreen("app");
+    }
+
     const tryMe = (attempt = 1) => {
       apiGet("/auth/me").then(data => {
         if (data.success && data.data) {
+          setCachedUser(data.data);
           setUser(data.data);
           setScreen(needsOnboarding(data.data) ? "onboarding" : "app");
         } else if (attempt < 3) {
-          // Retry up to 2 more times (cold start / transient failure)
           setTimeout(() => tryMe(attempt + 1), 800 * attempt);
-        } else {
+        } else if (!cached) {
+          // Only log out if there was no cached session to fall back on
           clearTokens();
           setScreen("landing");
         }
       }).catch(() => {
         if (attempt < 3) {
           setTimeout(() => tryMe(attempt + 1), 800 * attempt);
-        } else {
+        } else if (!cached) {
           clearTokens();
           setScreen("landing");
         }
