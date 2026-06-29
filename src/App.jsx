@@ -6638,15 +6638,29 @@ export default function App() {
 
     const token = getToken();
     if (!token) { setScreen("landing"); return; }
-    apiGet("/auth/me").then(data => {
-      if (data.success && data.data) {
-        setUser(data.data);
-        setScreen(data.data.onboarded === false ? "onboarding" : "app");
-      } else {
-        clearTokens();
-        setScreen("landing");
-      }
-    });
+
+    const tryMe = (attempt = 1) => {
+      apiGet("/auth/me").then(data => {
+        if (data.success && data.data) {
+          setUser(data.data);
+          setScreen(data.data.onboarded === false ? "onboarding" : "app");
+        } else if (attempt < 3) {
+          // Retry up to 2 more times (cold start / transient failure)
+          setTimeout(() => tryMe(attempt + 1), 800 * attempt);
+        } else {
+          clearTokens();
+          setScreen("landing");
+        }
+      }).catch(() => {
+        if (attempt < 3) {
+          setTimeout(() => tryMe(attempt + 1), 800 * attempt);
+        } else {
+          clearTokens();
+          setScreen("landing");
+        }
+      });
+    };
+    tryMe();
   }, []);
 
   useEffect(() => {
