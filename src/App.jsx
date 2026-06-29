@@ -24,7 +24,16 @@ const setTokens = (access, refresh) => {
 const clearTokens = () => {
   localStorage.removeItem("aa_access_token");
   localStorage.removeItem("aa_refresh_token");
+  localStorage.removeItem("aa_user_cache");
 };
+
+// Cache user object so page refresh never logs user out due to cold-start API delays
+const getCachedUser = () => { try { return JSON.parse(localStorage.getItem("aa_user_cache")); } catch { return null; } };
+const setCachedUser = (u) => { try { localStorage.setItem("aa_user_cache", JSON.stringify(u)); } catch {} };
+
+// Per-user onboarding flag as backup in case API save fails
+const getOnboardedFlag = (id) => localStorage.getItem(`aa_ob_${id}`) === "1";
+const setOnboardedFlag = (id) => localStorage.setItem(`aa_ob_${id}`, "1");
 
 // Set by AppShell when admin is viewing another user's dashboard
 let __viewAsUserId = null;
@@ -56,6 +65,19 @@ const apiDelete = (path)       => api(path, { method: "DELETE" });
 
 // Admin gets full premium access everywhere
 const effectivePlan = (profile) => profile?.role === "admin" ? "premium" : (profile?.plan || "free");
+
+// Only brand-new accounts (registered in last 30 min) need onboarding
+const needsOnboarding = (u) => {
+  if (!u) return false;
+  if (u.onboarded === true) return false;
+  if (u.desired_job_title || u.location) return false;
+  if (getOnboardedFlag(u.id)) return false;
+  if (u.created_at) {
+    const ageMs = Date.now() - new Date(u.created_at).getTime();
+    if (ageMs > 30 * 60 * 1000) return false;
+  }
+  return u.onboarded === false;
+};
 
 // ─── PLANS ────────────────────────────────────────────────────────────────────
 const PLANS = [
@@ -115,28 +137,24 @@ async function generateCoverLetter(jobTitle, company, skills) {
   return callOpenAI([{ role: "user", content: prompt }], 400);
 }
 
-// ─── OPENAI HELPERS ───────────────────────────────────────────────────────────
-async function callOpenAI(messages, maxTokens = 500) {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+// ─── AI HELPERS (via backend) ─────────────────────────────────────────────────
+async function callAI(messages, mode = "chat") {
+  const res = await fetch("/api/ai", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
-    body: JSON.stringify({ model: "gpt-4o-mini", messages, max_tokens: maxTokens }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, mode }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `OpenAI error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) throw new Error(data.message || "AI service unavailable");
+  return data.content || "";
 }
 
 async function analyzeResume(resumeText) {
-  return callOpenAI([{ role: "user", content: `Analyze this resume and provide: 1) ATS score out of 100, 2) Top 3 improvements, 3) Missing keywords for tech roles. Resume: ${resumeText.slice(0, 1000)}. Format as JSON: {"score": number, "improvements": ["..."], "keywords": ["..."]}` }], 300);
+  return callAI([{ role: "user", content: `Analyze this resume and provide: 1) ATS score out of 100, 2) Top 3 improvements, 3) Missing keywords for tech roles. Resume: ${resumeText.slice(0, 1000)}. Format as JSON: {"score": number, "improvements": ["..."], "keywords": ["..."]}` }]);
 }
 
-async function chatWithAI(messages) {
-  const systemMsg = { role: "system", content: "You are an expert AI career coach specializing in tech job searches in India. Help with resume advice, interview prep, salary negotiation, and career guidance. Be concise and actionable." };
-  return callOpenAI([systemMsg, ...messages], 400);
+async function chatWithAI(messages, mode = "chat") {
+  return callAI(messages, mode);
 }
 
 // ── Parse resume PDF/text → structured data via PDF.js + OpenAI ──────────────
@@ -298,7 +316,8 @@ async function startPayment(plan, onSuccess, onError) {
   if (!loaded) { onError("Failed to load Razorpay"); return; }
 
   // Create order on backend
-  const orderRes = await apiPost("/payments/create-order", { plan: plan.name.toLowerCase() });
+  const orderRes = await apiPost("/payments", { action: "create-order", plan: plan.name.toLowerCase() });
+  console.log("[Payment] create-order response:", JSON.stringify(orderRes));
   if (!orderRes.success) { onError(orderRes.message || "Failed to create order"); return; }
 
   const { order_id, amount, currency, key_id, user } = orderRes.data;
@@ -314,7 +333,8 @@ async function startPayment(plan, onSuccess, onError) {
     theme: { color: "#3B82F6" },
     handler: async (r) => {
       // Verify payment on backend
-      const verifyRes = await apiPost("/payments/verify", {
+      const verifyRes = await apiPost("/payments", {
+        action: "verify",
         razorpay_order_id: r.razorpay_order_id,
         razorpay_payment_id: r.razorpay_payment_id,
         razorpay_signature: r.razorpay_signature,
@@ -418,38 +438,7 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
 
   return (
     <div style={{ background: "#020817", minHeight: "100vh", color: "#fff", fontFamily: "Inter, sans-serif" }}>
-      <style>{`
-        @keyframes don-marquee { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }
-        @keyframes don-pulse-red { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5) } 70% { box-shadow: 0 0 0 8px rgba(220,38,38,0) } }
-        .don-bar-link:hover { background: rgba(220,38,38,0.25) !important; }
-        .don-bar-link { transition: background 0.2s; }
-        .don-cta-card:hover { transform: translateY(-2px); box-shadow: 0 16px 48px rgba(220,38,38,0.35) !important; }
-        .don-cta-card { transition: transform 0.25s, box-shadow 0.25s; }
-      `}</style>
-
-      {/* Emergency Announcement Bar */}
-      <a href="/donations" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, background: "linear-gradient(90deg,#7f1d1d,#DC2626,#7f1d1d)", padding: "9px 16px", textDecoration: "none", position: "relative", zIndex: 200, overflow: "hidden", cursor: "pointer" }} className="don-bar-link">
-        <span style={{ animation: "don-pulse-red 2s infinite", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 8, height: 8, borderRadius: "50%", background: "#fff", flexShrink: 0 }} />
-        <div style={{ overflow: "hidden", flex: 1, maxWidth: 700 }}>
-          <div style={{ display: "flex", gap: "3rem", whiteSpace: "nowrap", animation: "don-marquee 18s linear infinite", width: "max-content" }}>
-            {[1,2].map(i => (
-              <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "2rem", fontSize: "0.82rem", color: "#fff", fontWeight: 600, letterSpacing: "0.02em" }}>
-                <span>🇻🇪 EMERGENCY APPEAL</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-                <span>Venezuela Earthquake Relief — Help families in crisis</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-                <span>Donate Now →</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-                <span>Every ₹100 provides emergency meals</span>
-                <span style={{ opacity: 0.6 }}>·</span>
-              </span>
-            ))}
-          </div>
-        </div>
-        <span style={{ flexShrink: 0, background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.35)", borderRadius: 100, padding: "3px 12px", fontSize: "0.75rem", color: "#fff", fontWeight: 700, whiteSpace: "nowrap" }}>Donate →</span>
-      </a>
-
-      <nav style={{ position: "fixed", top: 38, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4%", height: 64, gap: 16 }}>
+      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(2,8,23,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4%", height: 64, gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>A</div>
           <div>
@@ -468,6 +457,8 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
           ))}
           <a href="https://machmiles.com/pricing" target="_blank" rel="noopener noreferrer" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif", textDecoration: "none" }}
             onMouseEnter={e => e.target.style.color="#fff"} onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.65)"}>Pricing</a>
+          <a href="/blog" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.88rem", fontWeight: 500, padding: "6px 12px", cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", fontFamily: "Inter,sans-serif", textDecoration: "none" }}
+            onMouseEnter={e => e.target.style.color="#fff"} onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.65)"}>Blog</a>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
           <button onClick={onLogin} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: "0.9rem", whiteSpace: "nowrap" }}>Sign In</button>
@@ -720,6 +711,29 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
         </div>
       </section>
 
+      <section id="how-it-works" style={{ padding: "5rem 5%", background: "rgba(255,255,255,0.02)" }}>
+        <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
+          <p style={{ color: "#818CF8", fontSize: "0.8rem", letterSpacing: "0.12em", fontWeight: 700, marginBottom: "0.75rem" }}>SIMPLE & FAST</p>
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem", letterSpacing: "-0.03em", margin: 0 }}>How It Works</h2>
+          <p style={{ color: "rgba(255,255,255,0.45)", marginTop: "0.75rem", fontSize: "1rem" }}>From signup to job offers — in 4 simple steps.</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "1.5rem", maxWidth: 1000, margin: "0 auto" }}>
+          {[
+            { step: "01", icon: "📋", title: "Create Your Profile", desc: "Sign up and tell us about yourself — your skills, experience, desired roles, and target companies." },
+            { step: "02", icon: "📄", title: "Upload Your Resume", desc: "Upload your resume or build one using our AI Resume Builder. Our AI tailors it for every application." },
+            { step: "03", icon: "🤖", title: "AI Applies for You", desc: "Our AI scans 50+ job boards 24/7, finds matching roles, and auto-applies with personalized cover letters." },
+            { step: "04", icon: "🎯", title: "Track & Get Hired", desc: "Monitor all your applications in one dashboard. Prepare for interviews and land your dream job." },
+          ].map(({ step, icon, title, desc }) => (
+            <div key={step} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "2rem 1.5rem", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 16, right: 20, fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "3rem", color: "rgba(99,102,241,0.12)", lineHeight: 1 }}>{step}</div>
+              <div style={{ fontSize: "2.2rem", marginBottom: "1rem" }}>{icon}</div>
+              <h3 style={{ fontWeight: 700, fontSize: "1.1rem", color: "#fff", margin: "0 0 0.6rem" }}>{title}</h3>
+              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.9rem", lineHeight: 1.7, margin: 0 }}>{desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section id="faq" style={{ padding: "5rem 5%", maxWidth: 700, margin: "0 auto" }}>
         <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.2rem", textAlign: "center", marginBottom: "3rem" }}>Frequently asked questions</h2>
         {FAQS.map((f, i) => (
@@ -848,9 +862,9 @@ function LandingPage({ onSignup, onLogin, onPolicy }) {
             {/* Partners */}
             <div>
               <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "2px solid rgba(129,140,248,0.4)" }}>Partners</div>
-              {[["White-Label Solution", onSignup], ["Affiliate Program", onSignup], ["Career Coaches", onSignup], ["HR & Employers", onSignup], ["Campus Connect", onSignup]].map(([label, action]) => (
+              {[["White-Label Solution","/white-label-solution"],["Affiliate Program","/affiliate-program"],["Career Coaches","/career-coaches"],["HR & Employers","/hr-employers"],["Campus Connect","/campus-connect"]].map(([label, href]) => (
                 <div key={label} style={{ marginBottom: 8 }}>
-                  <button onClick={action} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif" }}>{label}</button>
+                  <a href={href} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter,sans-serif", textDecoration: "none" }}>{label}</a>
                 </div>
               ))}
             </div>
@@ -998,7 +1012,7 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
               {mode === "signup" && (
                 <div style={{ display: "flex", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "rgba(255,255,255,0.5)", fontSize: "0.95rem", whiteSpace: "nowrap" }}>+91</div>
-                  <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Mobile number (optional)" type="tel" maxLength={10}
+                  <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Mobile number" type="tel" maxLength={10}
                     style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none", flex: 1, boxSizing: "border-box" }} />
                 </div>
               )}
@@ -1025,10 +1039,11 @@ function AuthScreen({ mode, onAuth, onToggle, onBack }) {
 // ─── ONBOARDING ───────────────────────────────────────────────────────────────
 function Onboarding({ user, onComplete }) {
   const [step, setStep] = useState(1);
-  const [prefs, setPrefs] = useState({ title: "", location: "", remote: "Remote", salary: "", level: "Mid-level" });
+  const [prefs, setPrefs] = useState({ title: "", location: "", remote: "Remote", salary: "", level: "Mid-level", notice: "", experience: "", current_salary: "" });
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [uploadedName, setUploadedName] = useState("");
+  const [resumeChosen, setResumeChosen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [goToResume, setGoToResume] = useState(false);
 
@@ -1051,7 +1066,7 @@ function Onboarding({ user, onComplete }) {
       const parsed = await parseResumeWithAI(text);
       const title = (parsed?.basics?.name || file.name.replace(/\.[^.]+$/, "")) + " — Resume";
       const res = await apiPost("/resumes", { title, template: "classic", resume_data: parsed || {} });
-      if (res.success || res.data) { setUploaded(true); setUploadedName(file.name); }
+      if (res.success || res.data) { setUploaded(true); setUploadedName(file.name); setResumeChosen(true); }
       else alert("Upload failed: " + (res.message || "Unknown error"));
     } catch (err) {
       alert("Upload failed: " + err.message);
@@ -1061,7 +1076,19 @@ function Onboarding({ user, onComplete }) {
 
   const complete = async (navToResume = false) => {
     setSaving(true);
-    await supabase.from("profiles").upsert({ id: user.id, desired_job_title: prefs.title, location: prefs.location, work_type: prefs.remote, salary: prefs.salary, experience_level: prefs.level, onboarded: true });
+    await apiPut("/profile", {
+      desired_job_title: prefs.title,
+      location: prefs.location,
+      work_type: prefs.remote,
+      salary: prefs.salary,
+      experience_level: prefs.level,
+      notice_period: prefs.notice,
+      total_experience: prefs.experience,
+      current_salary: prefs.current_salary,
+      onboarded: true,
+    });
+    // Backup flag so onboarding is never re-shown even if API save is delayed
+    if (user?.id) setOnboardedFlag(user.id);
     setSaving(false);
     onComplete(navToResume ? "Resume" : null);
   };
@@ -1087,36 +1114,68 @@ function Onboarding({ user, onComplete }) {
             <div style={{ textAlign: "center", marginTop: "1.25rem" }}>
               <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.85rem" }}>— or —</span>
             </div>
-            <button onClick={() => complete(true)} style={{ width: "100%", marginTop: "1rem", padding: "14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, color: "rgba(255,255,255,0.8)", fontWeight: 600, fontSize: "0.95rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <button onClick={() => { setResumeChosen(true); complete(true); }} style={{ width: "100%", marginTop: "1rem", padding: "14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, color: "rgba(255,255,255,0.8)", fontWeight: 600, fontSize: "0.95rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
               ✏️ Create your own resume with templates
             </button>
+            {!resumeChosen && <p style={{ textAlign: "center", color: "#f87171", fontSize: "0.82rem", marginTop: "1rem" }}>Please upload your resume or choose to create one before continuing.</p>}
           </div>
         )}
 
-        {step === 2 && (
-          <div>
-            <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.8rem", marginBottom: "0.5rem" }}>Job preferences</h2>
-            <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: "2rem" }}>Saved to your Supabase profile for AI matching.</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {[["Desired Job Title","title","e.g. Senior React Developer"],["Preferred Location","location","e.g. Bangalore, Remote"],["Expected Salary (LPA)","salary","e.g. 25-30"]].map(([label,key,ph]) => (
-                <div key={key}>
-                  <label style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "block", marginBottom: 6 }}>{label.toUpperCase()}</label>
-                  <input value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} placeholder={ph} style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "11px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" }} />
-                </div>
-              ))}
-              <div style={{ display: "flex", gap: 12 }}>
-                {[["Work Type","remote",["Remote","Hybrid","Onsite"]],["Experience","level",["Entry","Mid-level","Senior","Lead"]]].map(([label,key,opts]) => (
-                  <div key={key} style={{ flex: 1 }}>
-                    <label style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "block", marginBottom: 6 }}>{label.toUpperCase()}</label>
-                    <select value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "11px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" }}>
-                      {opts.map(o => <option key={o} value={o} style={{ background: "#020817" }}>{o}</option>)}
-                    </select>
+        {step === 2 && (() => {
+          const step2Required = ["title","location","salary","notice","experience","current_salary"];
+          const step2Valid = step2Required.every(k => prefs[k]?.trim());
+          const inputStyle = { width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "11px 14px", color: "#fff", fontFamily: "Inter,sans-serif", fontSize: "0.95rem", outline: "none" };
+          const labelStyle = { fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.07em", display: "flex", alignItems: "center", gap: 4, marginBottom: 6 };
+          const req = <span style={{ color: "#f87171", fontSize: "0.7rem" }}>*</span>;
+          return (
+            <div>
+              <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.8rem", marginBottom: "0.5rem" }}>Job preferences</h2>
+              <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: "1.5rem" }}>All fields marked <span style={{ color: "#f87171" }}>*</span> are required.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {[["Desired Job Title","title","e.g. Senior React Developer"],["Preferred Location","location","e.g. Bangalore, Remote"]].map(([label,key,ph]) => (
+                  <div key={key}>
+                    <label style={labelStyle}>{label.toUpperCase()}{req}</label>
+                    <input value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} placeholder={ph} style={inputStyle} />
                   </div>
                 ))}
+                <div style={{ display: "flex", gap: 12 }}>
+                  {[["Work Type","remote",["Remote","Hybrid","Onsite"]],["Experience Level","level",["Entry","Mid-level","Senior","Lead"]]].map(([label,key,opts]) => (
+                    <div key={key} style={{ flex: 1 }}>
+                      <label style={labelStyle}>{label.toUpperCase()}{req}</label>
+                      <select value={prefs[key]} onChange={e => setPrefs({...prefs,[key]:e.target.value})} style={{ ...inputStyle, width: "100%" }}>
+                        {opts.map(o => <option key={o} value={o} style={{ background: "#020817" }}>{o}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>EXPECTED SALARY (LPA){req}</label>
+                    <input value={prefs.salary} onChange={e => setPrefs({...prefs, salary: e.target.value})} placeholder="e.g. 25-30" style={inputStyle} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>CURRENT ANNUAL SALARY (LPA){req}</label>
+                    <input value={prefs.current_salary} onChange={e => setPrefs({...prefs, current_salary: e.target.value})} placeholder="e.g. 18" style={inputStyle} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>TOTAL EXPERIENCE (YEARS){req}</label>
+                    <input value={prefs.experience} onChange={e => setPrefs({...prefs, experience: e.target.value})} placeholder="e.g. 3" style={inputStyle} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>NOTICE PERIOD{req}</label>
+                    <select value={prefs.notice} onChange={e => setPrefs({...prefs, notice: e.target.value})} style={{ ...inputStyle, width: "100%", color: prefs.notice ? "#fff" : "rgba(255,255,255,0.35)" }}>
+                      <option value="" style={{ background: "#020817" }}>Select notice period</option>
+                      {["Immediate","15 Days","1 Month","2 Months","3 Months","More than 3 Months"].map(o => <option key={o} value={o} style={{ background: "#020817", color: "#fff" }}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {!step2Valid && <p style={{ color: "#f87171", fontSize: "0.82rem", margin: "0.25rem 0 0" }}>Please fill all required fields to continue.</p>}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {step === 3 && (
           <div>
@@ -1133,9 +1192,16 @@ function Onboarding({ user, onComplete }) {
 
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2rem" }}>
           <button onClick={() => step > 1 && setStep(s => s-1)} style={{ background: "transparent", border: step === 1 ? "none" : "1px solid rgba(255,255,255,0.12)", color: step === 1 ? "transparent" : "rgba(255,255,255,0.6)", borderRadius: 10, padding: "12px 24px", cursor: step === 1 ? "default" : "pointer" }}>Back</button>
-          <button onClick={() => step < 3 ? setStep(s => s+1) : complete()} disabled={saving} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: "#fff", borderRadius: 10, padding: "12px 32px", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
-            {saving && <Spinner />}{step === 3 ? "Launch AutoApply AI 🚀" : "Continue →"}
-          </button>
+          {(() => {
+            const step2Required = ["title","location","salary","notice","experience","current_salary"];
+            const step2Valid = step2Required.every(k => prefs[k]?.trim());
+            const blocked = saving || (step === 1 && !resumeChosen) || (step === 2 && !step2Valid);
+            return (
+              <button onClick={() => { if (step === 1 && !resumeChosen) return; if (step === 2 && !step2Valid) return; step < 3 ? setStep(s => s+1) : complete(); }} disabled={blocked} style={{ background: blocked ? "rgba(255,255,255,0.1)" : "linear-gradient(135deg,#3B82F6,#8B5CF6)", border: "none", color: blocked ? "rgba(255,255,255,0.3)" : "#fff", borderRadius: 10, padding: "12px 32px", cursor: blocked ? "not-allowed" : "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                {saving && <Spinner />}{step === 3 ? "Launch AutoApply AI 🚀" : "Continue →"}
+              </button>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -3988,17 +4054,12 @@ function InterviewPage() {
   ];
 
   const generateAnswer = async (q, i) => {
-    if (!OPENAI_KEY) { setAnswers(prev => ({ ...prev, [i]: "⚠ OpenAI key not configured. Add VITE_OPENAI_KEY in Vercel environment variables to enable AI answers." })); return; }
     setGeneratingAnswer(i);
     try {
-      const answer = await chatWithAI([{ role: "user", content: `Give a strong interview answer for: "${q.q}". Use STAR method if behavioral. Be concise (150 words max).` }]);
+      const answer = await chatWithAI([{ role: "user", content: `Give a strong interview answer for: "${q.q}". Use STAR method if behavioral. Be concise (150 words max).` }], "interview");
       setAnswers(prev => ({ ...prev, [i]: answer || "No response received. Please try again." }));
     } catch (e) {
-      const msg = e.message || "";
-      const friendly = msg.includes("quota") || msg.includes("billing") || msg.includes("429")
-        ? "⚠ AI service is temporarily unavailable. Our team has been notified — please try again later."
-        : "⚠ Failed to generate answer. Please try again.";
-      setAnswers(prev => ({ ...prev, [i]: friendly }));
+      setAnswers(prev => ({ ...prev, [i]: `⚠ ${e.message || "Failed to generate answer. Please try again."}` }));
     }
     setGeneratingAnswer(null);
   };
@@ -4052,8 +4113,12 @@ function AssistantPage() {
     setMessages(m => [...m, userMsg]);
     setInput("");
     setLoading(true);
-    const reply = await chatWithAI([...messages, userMsg]);
-    setMessages(m => [...m, { role: "assistant", content: reply }]);
+    try {
+      const reply = await chatWithAI([...messages, userMsg]);
+      setMessages(m => [...m, { role: "assistant", content: reply || "Sorry, I didn't get a response. Please try again." }]);
+    } catch (e) {
+      setMessages(m => [...m, { role: "assistant", content: `⚠ ${e.message || "Something went wrong. Please try again."}` }]);
+    }
     setLoading(false);
   };
 
@@ -4751,6 +4816,1169 @@ function CANCELLATION_CONTENT() {
   </>);
 }
 
+// ─── PARTNER PAGE SHELL ───────────────────────────────────────────────────────
+function PartnerPage({ onBack, title, subtitle, sections }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Inter,sans-serif", color: "#e2e8f0" }}>
+      <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.pp-fade{animation:fadeUp 0.6s ease both}`}</style>
+      {/* Nav */}
+      <div style={{ background: "rgba(15,23,42,0.95)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "1rem 2rem", display: "flex", alignItems: "center", gap: "1rem", position: "sticky", top: 0, zIndex: 50, backdropFilter: "blur(12px)" }}>
+        <button onClick={onBack} style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "#94a3b8", borderRadius: 8, padding: "0.5rem 1rem", cursor: "pointer", fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 6 }}>← Back</button>
+        <span style={{ color: "#fff", fontWeight: 700, fontSize: "1rem" }}>MACHMILES · Partners</span>
+      </div>
+      {/* Hero */}
+      <div style={{ background: "linear-gradient(135deg,#1e1b4b 0%,#1e3a5f 50%,#0f172a 100%)", padding: "5rem 2rem 4rem", textAlign: "center" }}>
+        <div className="pp-fade" style={{ maxWidth: 700, margin: "0 auto" }}>
+          <div style={{ display: "inline-block", background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 999, padding: "0.4rem 1.2rem", fontSize: "0.8rem", color: "#a5b4fc", marginBottom: "1.5rem", letterSpacing: "0.08em", textTransform: "uppercase" }}>Partner Program</div>
+          <h1 style={{ fontSize: "clamp(2rem,5vw,3.2rem)", fontWeight: 800, color: "#fff", lineHeight: 1.1, margin: "0 0 1rem" }}>{title}</h1>
+          <p style={{ fontSize: "1.1rem", color: "#94a3b8", lineHeight: 1.7, margin: 0 }}>{subtitle}</p>
+        </div>
+      </div>
+      {/* Sections */}
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "3rem 2rem 5rem" }}>
+        {sections.map((sec, i) => (
+          <div key={i} className="pp-fade" style={{ marginBottom: "3rem", animationDelay: `${i * 0.1}s` }}>
+            {sec.heading && <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#818cf8", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "2px solid rgba(129,140,248,0.2)" }}>{sec.heading}</h2>}
+            {sec.text && <p style={{ fontSize: "1rem", color: "#94a3b8", lineHeight: 1.8, margin: "0 0 1rem" }}>{sec.text}</p>}
+            {sec.bullets && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: "0.75rem", margin: "1rem 0" }}>
+                {sec.bullets.map((b, j) => (
+                  <div key={j} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "0.85rem 1rem", display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <span style={{ color: "#818cf8", fontSize: "1rem", flexShrink: 0 }}>✦</span>
+                    <span style={{ fontSize: "0.9rem", color: "#cbd5e1", lineHeight: 1.5 }}>{b}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {/* CTA */}
+        <div style={{ textAlign: "center", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 16, padding: "2.5rem" }}>
+          <h3 style={{ color: "#fff", fontSize: "1.4rem", fontWeight: 700, margin: "0 0 0.75rem" }}>Ready to Partner with Us?</h3>
+          <p style={{ color: "#94a3b8", marginBottom: "1.5rem" }}>Email us at <a href="mailto:partners@machmiles.com" style={{ color: "#818cf8", textDecoration: "none" }}>partners@machmiles.com</a> or <a href="mailto:info@machmiles.com" style={{ color: "#818cf8", textDecoration: "none" }}>info@machmiles.com</a></p>
+          <a href="/" style={{ display: "inline-block", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", textDecoration: "none", fontWeight: 700, fontSize: "0.95rem", padding: "0.85rem 2.5rem", borderRadius: 10 }}>Go to AutoApply AI →</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BLOG DATA ────────────────────────────────────────────────────────────────
+const BLOG_POSTS = [
+  {
+    slug: "how-to-apply-to-100-jobs-in-one-day",
+    title: "How to Apply to 100 Jobs in 1 Day Using AI",
+    date: "June 25, 2025",
+    readTime: "6 min read",
+    category: "Job Search Strategy",
+    excerpt: "Stop spending 30 minutes on each application. Here's how AI job automation tools let Indian job seekers apply to 100+ roles every single day — without burning out.",
+    content: `
+## The Problem with Manual Job Applications
+
+The average job seeker in India spends 45 minutes on a single job application. Writing a tailored cover letter, adjusting the resume, filling out forms — it adds up fast. If you apply to 5 jobs a day, that's nearly 4 hours of work with very little to show for it.
+
+The math is brutal: to apply to 100 jobs, you need **75 hours** of manual effort. That's almost two full work weeks.
+
+AI job application automation changes this entirely.
+
+## How AI Auto-Apply Works
+
+Modern AI platforms like AutoApply AI by MACHMILES let you:
+
+1. **Upload your resume once** — the AI parses your skills, experience, and education automatically
+2. **Set your job preferences** — role, location, salary range, notice period, remote/hybrid preference
+3. **Let the AI search and apply** — it scans LinkedIn, Naukri, Indeed, Wellfound and 50+ job boards simultaneously
+4. **AI tailors each application** — your resume and cover letter are automatically customized for each job's requirements
+
+The result: 100 applications sent in hours, not weeks.
+
+## Step-by-Step: Apply to 100 Jobs Today
+
+### Step 1: Prepare a Strong Base Resume
+Before automation works well, your resume needs to be solid. Focus on:
+- Quantified achievements ("Increased sales by 40%", "Led a team of 8")
+- ATS-friendly formatting (no tables, no columns, no images)
+- Keywords from your target job descriptions
+
+### Step 2: Set Up Your AutoApply Profile
+Sign up at machmiles.com, upload your resume, and fill in:
+- Target job titles (add 3-5 variations: "Software Engineer", "Backend Developer", "SDE")
+- Preferred locations (can select multiple cities)
+- Salary expectations
+- Notice period
+
+### Step 3: Choose Your Application Mode
+- **Fully Automatic** — AI applies without asking you
+- **Review Before Applying** — you approve each application
+- **Manual** — use AI suggestions but apply yourself
+
+For maximum volume, Fully Automatic is the fastest.
+
+### Step 4: Monitor Your Dashboard
+Track every application in real time — status updates, company responses, and interview invitations all appear in one place.
+
+## What to Expect
+
+Most users who automate their job search report:
+- **3x more interview calls** compared to manual applying
+- **First interview invite** within 48-72 hours of activating automation
+- **10-15 applications per hour** sent automatically
+
+## Common Mistakes to Avoid
+
+- **Don't use a generic resume** — even with automation, a strong base resume matters
+- **Don't apply to irrelevant roles** — set your preferences carefully so the AI targets the right jobs
+- **Don't ignore follow-ups** — when companies respond, reply fast; the AI got you in the door
+
+## The Bottom Line
+
+Applying to 100 jobs in a day is no longer a fantasy. With AI automation, it's Tuesday morning. Set it up once, let it run, and focus your energy on preparing for the interviews that come in.
+
+[Start Applying for Free →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "best-ai-job-application-tools-india-2025",
+    title: "Best AI Job Application Tools in India 2025",
+    date: "June 20, 2025",
+    readTime: "8 min read",
+    category: "Tools & Reviews",
+    excerpt: "A detailed comparison of the top AI-powered job application tools available in India in 2025 — features, pricing, and which one is right for your job search.",
+    content: `
+## AI Job Application Tools Are Changing the Game in India
+
+In 2025, the Indian job market is more competitive than ever. Over 1.5 crore graduates enter the workforce every year, all competing for the same roles on LinkedIn, Naukri, and Indeed. The candidates who get more interviews aren't always the most qualified — they're the ones who apply the most.
+
+AI job application tools solve this by automating the most time-consuming parts of the job search.
+
+## Top AI Job Application Tools in India (2025)
+
+### 1. AutoApply AI by MACHMILES ⭐ Best for Indian Job Seekers
+
+**What it does:** Fully automated job applications across 50+ Indian and global job boards.
+
+**Key features:**
+- Auto-applies to LinkedIn, Naukri, Indeed, Wellfound simultaneously
+- AI-tailored resume and cover letter for each job
+- Real-time application tracking dashboard
+- Interview prep AI coach
+- Supports Indian salary formats (LPA), cities, and job boards
+
+**Pricing:**
+- Free plan available
+- Pro: ₹599/month
+- Premium: ₹999/month
+
+**Best for:** Freshers, experienced professionals, and anyone doing an active job search in India.
+
+[Try AutoApply AI Free →](https://www.machmiles.com)
+
+---
+
+### 2. LazyApply
+
+**What it does:** Auto-applies to LinkedIn jobs using a Chrome extension.
+
+**Key features:**
+- LinkedIn Easy Apply automation
+- Basic resume customization
+
+**Limitations:**
+- Only works on LinkedIn (not Naukri or Indeed)
+- Pricing in USD (expensive for Indian users)
+- No Indian job board support
+
+**Pricing:** ~$49/month (approx. ₹4,000+)
+
+---
+
+### 3. Jobscan
+
+**What it does:** ATS resume optimization — not auto-apply, but helps your resume pass filters.
+
+**Key features:**
+- Resume-to-job-description keyword matching
+- ATS score checker
+
+**Limitations:**
+- Not an auto-apply tool
+- You still apply manually
+
+**Pricing:** Free tier + $49.95/month premium
+
+---
+
+### 4. Simplify.jobs
+
+**What it does:** Chrome extension that auto-fills job applications.
+
+**Key features:**
+- Auto-fills forms on company career pages
+- Tracks applications
+
+**Limitations:**
+- You still need to find and open each job manually
+- Limited Indian job board coverage
+
+**Pricing:** Free + $30/month premium
+
+---
+
+## Comparison Table
+
+| Feature | AutoApply AI (MACHMILES) | LazyApply | Jobscan | Simplify |
+|---|---|---|---|---|
+| Indian job boards | ✅ Yes | ❌ No | ❌ No | ❌ Limited |
+| Auto-apply | ✅ Fully automatic | ✅ LinkedIn only | ❌ No | ⚠️ Partial |
+| AI resume tailoring | ✅ Yes | ⚠️ Basic | ✅ Yes | ❌ No |
+| Pricing in INR | ✅ Yes | ❌ USD | ❌ USD | ❌ USD |
+| Free plan | ✅ Yes | ❌ No | ✅ Limited | ✅ Limited |
+| Interview prep | ✅ Yes | ❌ No | ❌ No | ❌ No |
+
+## Which Tool Should You Choose?
+
+If you're a job seeker in India, **AutoApply AI by MACHMILES** is the only tool built specifically for the Indian market — with Naukri, Rupee pricing, Indian city support, and a free plan to get started.
+
+For global job searches (US/UK), LazyApply + Simplify combined works reasonably well, but expect to pay in USD.
+
+[Start Your Free Job Search Automation →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "how-to-beat-ats-applicant-tracking-system",
+    title: "How to Beat ATS in 2025 — Get Your Resume Past the Robot",
+    date: "June 15, 2025",
+    readTime: "7 min read",
+    category: "Resume Tips",
+    excerpt: "75% of resumes are rejected by ATS software before a human ever reads them. Here's exactly how to format and write your resume to pass ATS filters and reach the hiring manager.",
+    content: `
+## What Is ATS and Why Does It Matter?
+
+ATS stands for Applicant Tracking System — the software companies use to filter job applications before a human recruiter reviews them. Companies like Infosys, TCS, Wipro, Amazon India, and even most startups use ATS to manage the flood of applications they receive.
+
+The hard truth: **75% of resumes are rejected automatically by ATS** — never seen by a human.
+
+If your resume isn't ATS-friendly, it doesn't matter how qualified you are. It goes straight to the trash folder.
+
+## How ATS Works
+
+1. You apply for a job
+2. Your resume is uploaded to the company's ATS (Workday, Greenhouse, Lever, iCIMS, etc.)
+3. The ATS scans your resume for keywords, skills, and experience
+4. It gives your resume a "match score" against the job description
+5. Only resumes above a threshold score are shown to the recruiter
+
+## 10 Rules for an ATS-Proof Resume
+
+### Rule 1: Use Standard Section Headings
+ATS looks for specific headings. Use exactly these:
+- **Work Experience** (not "My Career Journey")
+- **Education** (not "Academic Background")
+- **Skills** (not "What I Bring to the Table")
+- **Summary** or **Professional Summary**
+
+### Rule 2: No Tables, Columns, or Text Boxes
+Most ATS cannot read text inside tables or columns. A two-column resume looks great to humans but reads as gibberish to ATS. Use a simple single-column layout.
+
+### Rule 3: Match Keywords from the Job Description
+This is the most important rule. Copy the exact keywords from the job posting into your resume where they're genuinely applicable.
+
+Example: If a job says "proficient in Python and REST APIs", your resume should say "Python" and "REST APIs" — not "server-side scripting" or "web services".
+
+### Rule 4: Use Standard Fonts
+Stick to: Arial, Calibri, Georgia, Times New Roman, or Helvetica. Decorative fonts confuse ATS parsers.
+
+### Rule 5: Avoid Headers and Footers
+Many ATS systems skip content in headers and footers. Put your contact information in the main body of the resume.
+
+### Rule 6: Spell Out Acronyms
+Write "Search Engine Optimization (SEO)" not just "SEO". Some ATS may not recognize abbreviations.
+
+### Rule 7: Use .docx or PDF format
+Most ATS prefer .docx (Microsoft Word). If submitting PDF, make sure it's a text-based PDF, not a scanned image.
+
+### Rule 8: Quantify Everything
+ATS and humans both love numbers. Instead of:
+- "Managed a team" → "Managed a team of 12 engineers"
+- "Improved sales" → "Increased quarterly sales by 34%"
+- "Handled customer complaints" → "Resolved 50+ customer escalations per week with 92% satisfaction rate"
+
+### Rule 9: Include a Skills Section
+Have a dedicated "Skills" section that lists your technical and soft skills as a simple bulleted or comma-separated list. ATS specifically looks for this section.
+
+### Rule 10: Tailor for Every Job
+One resume doesn't fit all. Ideally, you adjust keywords for each job you apply to. This is where AI tools like AutoApply AI automate the process — the AI reads each job description and updates your resume keywords automatically before each application.
+
+## ATS Checklist Before You Apply
+
+- [ ] Single-column layout
+- [ ] Standard section headings
+- [ ] No tables, text boxes, or images
+- [ ] Keywords from the job description included
+- [ ] Contact info in body (not header/footer)
+- [ ] Quantified achievements
+- [ ] .docx or proper PDF format
+- [ ] Skills section present
+
+## Use AI to Automate ATS Optimization
+
+Checking every resume against every job description manually is exhausting. AutoApply AI does this automatically — it reads the job description, identifies the key skills and keywords, and adjusts your resume before sending each application.
+
+[Let AI Optimize Your Resume Automatically →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "naukri-vs-linkedin-india-job-search",
+    title: "Naukri vs LinkedIn for Job Search in India — Which is Better in 2025?",
+    date: "June 10, 2025",
+    readTime: "5 min read",
+    category: "Job Search Strategy",
+    excerpt: "Should you focus on Naukri or LinkedIn for your job search in India? We break down which platform works better for which roles, salary levels, and experience levels.",
+    content: `
+## Naukri vs LinkedIn: The Eternal Indian Job Seeker Debate
+
+If you're job hunting in India, you're almost certainly on both Naukri and LinkedIn. But where should you focus your energy? The answer depends on your role, experience level, and industry.
+
+Here's a complete breakdown.
+
+## Naukri.com
+
+### Who it's best for:
+- Freshers and 0-5 years experience
+- IT/Software roles in Tier 2 and Tier 3 cities
+- Government and PSU job seekers
+- BPO, operations, and non-tech roles
+- Mass recruitment from Indian companies (Wipro, Infosys, HCL, TCS)
+
+### Strengths:
+- Largest database of Indian job postings (90 lakh+ active jobs)
+- Strong recruiter presence from Indian companies
+- Resume database — recruiters actively search Naukri resumes
+- Naukri Score helps your profile get discovered
+- Job alerts via email and SMS
+
+### Weaknesses:
+- Lower quality startups and product companies
+- Less effective for roles above ₹20 LPA
+- Many spam/fake job postings
+- UI/UX is outdated
+
+### Best strategy on Naukri:
+- Keep your profile 100% complete
+- Update your resume every 2-3 weeks (it boosts visibility in recruiter searches)
+- Set up job alerts for your exact role + city
+- Apply to jobs within the first 24 hours of posting (older postings get less recruiter attention)
+
+---
+
+## LinkedIn
+
+### Who it's best for:
+- 3+ years experience professionals
+- Startup and product company jobs
+- Senior and leadership roles (₹15 LPA+)
+- Global company hiring in India (Google, Microsoft, Amazon, Meta)
+- Roles in marketing, sales, consulting, design, product management
+
+### Strengths:
+- Best platform for networking and referrals
+- Global companies and top-tier Indian startups recruit here
+- LinkedIn Easy Apply makes applying fast
+- Recruiters from MNCs primarily use LinkedIn
+- Personal branding — your profile is your public resume
+
+### Weaknesses:
+- Less effective for freshers (most jobs need 2+ years experience)
+- More competitive — everyone applies here
+- Requires active networking to see full benefits
+- Premium features needed for InMail and advanced search
+
+### Best strategy on LinkedIn:
+- Keep profile updated with a professional photo and headline
+- Post content about your domain (this gets you recruiter attention)
+- Connect with recruiters at your target companies
+- Use Easy Apply for quick applications
+- Ask for referrals from 2nd-degree connections
+
+---
+
+## Head-to-Head Comparison
+
+| Factor | Naukri | LinkedIn |
+|---|---|---|
+| Fresher jobs | ✅ Excellent | ⚠️ Limited |
+| Senior roles (15+ LPA) | ⚠️ Limited | ✅ Excellent |
+| MNC hiring | ❌ Rare | ✅ Strong |
+| Indian IT companies | ✅ Excellent | ✅ Good |
+| Startups | ⚠️ Some | ✅ Excellent |
+| Recruiter cold outreach | ✅ High | ✅ High |
+| Networking | ❌ None | ✅ Core feature |
+| Free features | ✅ Most features free | ⚠️ Limited without premium |
+
+## The Verdict
+
+**Use both — but automate them.**
+
+The winning strategy in 2025 is not choosing between Naukri and LinkedIn, it's applying to both simultaneously. Manually switching between platforms wastes hours every day.
+
+AutoApply AI by MACHMILES applies to LinkedIn, Naukri, Indeed, and 50+ other job boards simultaneously — from a single dashboard. You set your preferences once, and the AI handles applications on every platform at once.
+
+[Apply to Naukri + LinkedIn Simultaneously →](https://www.machmiles.com)
+    `,
+  },
+  {
+    slug: "ai-resume-builder-india-guide",
+    title: "How to Build an AI-Optimized Resume That Gets Shortlisted in India",
+    date: "June 5, 2025",
+    readTime: "9 min read",
+    category: "Resume Tips",
+    excerpt: "Step-by-step guide to building a resume that passes ATS filters, impresses Indian recruiters, and gets you more interview calls — using AI to do the heavy lifting.",
+    content: `
+## Why Most Indian Resumes Don't Get Shortlisted
+
+Recruiters at top Indian companies — Flipkart, Swiggy, Razorpay, Zepto, and the big IT firms — receive 500-1000 applications for a single job posting. They spend an average of **6 seconds** on each resume.
+
+Your resume has 6 seconds to make an impression.
+
+Here's how to build one that works.
+
+## Section 1: Contact Information
+
+Keep it clean and simple at the top:
+
+- **Full Name** (large, bold)
+- **Phone number** (with +91 prefix)
+- **Email** (professional — yourname@gmail.com, not coolboy1999@yahoo.com)
+- **LinkedIn profile URL** (shortened: linkedin.com/in/yourname)
+- **GitHub** (if you're in tech)
+- **City, State** (no need for full address)
+
+Do NOT include: Date of birth, religion, marital status, gender, photo (unless specifically asked). These are common mistakes in Indian resumes that modern companies consider red flags.
+
+## Section 2: Professional Summary
+
+Write 3-4 sentences that immediately tell the recruiter:
+1. What you do (your role and years of experience)
+2. What you're best at (your top 2-3 skills)
+3. What you've achieved (one strong quantified result)
+4. What you're looking for (optional)
+
+**Example (bad):**
+"I am a hard-working and dedicated software engineer who is passionate about technology and looking for new opportunities to grow."
+
+**Example (good):**
+"Backend engineer with 4 years of experience building scalable APIs in Node.js and Python. Led migration of monolith to microservices at FinTech startup, reducing p99 latency by 60%. Passionate about distributed systems and high-throughput data pipelines."
+
+## Section 3: Work Experience
+
+This is the most important section. Use this exact format for each role:
+
+**Company Name** | Job Title | City | Month Year – Month Year
+
+- Bullet point starting with a strong action verb
+- Quantified result wherever possible
+- Relevant keywords from your target job descriptions
+
+**Strong action verbs for tech roles:** Built, Designed, Architected, Optimized, Reduced, Increased, Led, Deployed, Migrated, Automated
+
+**Strong action verbs for non-tech roles:** Managed, Grew, Generated, Negotiated, Streamlined, Launched, Coordinated, Achieved, Exceeded, Delivered
+
+### How many bullet points?
+- Most recent role: 4-6 bullets
+- Previous roles: 2-4 bullets
+- Older roles (3+ years ago): 1-2 bullets or remove
+
+## Section 4: Skills
+
+List your skills in a simple format — either bullet points or comma-separated. Group them logically:
+
+**Languages:** Python, JavaScript, Java, SQL
+**Frameworks:** React, Node.js, Django, Spring Boot
+**Tools:** Git, Docker, Kubernetes, Jira, Figma
+**Databases:** PostgreSQL, MongoDB, Redis
+
+For non-tech professionals:
+**Core Skills:** Project Management, Stakeholder Communication, Data Analysis
+**Tools:** MS Excel, Salesforce, HubSpot, Tableau, Power BI
+**Certifications:** PMP, Google Analytics, AWS Cloud Practitioner
+
+## Section 5: Education
+
+For most professionals with 2+ years of experience, education goes AFTER work experience.
+
+Format:
+**Degree Name** | College Name | Year of Graduation | CGPA (if 7.5+)
+
+Example:
+B.Tech Computer Science | IIT Roorkee | 2020 | 8.4 CGPA
+
+If you're a fresher, put Education first and expand it — include relevant coursework, projects, internships, and achievements.
+
+## Section 6: Projects (For Freshers and Tech Roles)
+
+2-4 projects with:
+- Project name + tech stack used
+- What problem it solves
+- Key metric (users, performance, etc.)
+- GitHub link
+
+## AI Tools to Build and Optimize Your Resume
+
+### AutoApply AI Resume Builder
+At machmiles.com, the AI resume builder:
+- Generates a complete ATS-friendly resume from your profile
+- Offers multiple professional templates
+- Auto-tailors your resume for each job you apply to
+- Gives you an ATS match score before each application
+
+### Other tools to use alongside:
+- **Grammarly** — for writing quality
+- **Hemingway App** — for clarity and readability
+- **Jobscan** — to check ATS keyword match score
+
+## Resume Checklist
+
+Before sending any application, verify:
+
+- [ ] One page (if under 8 years experience), max two pages
+- [ ] Single column layout (ATS safe)
+- [ ] Professional email address
+- [ ] No photo, DOB, marital status, religion
+- [ ] Quantified achievements in every role
+- [ ] Keywords from the target job description included
+- [ ] No spelling or grammar errors
+- [ ] Contact info in body (not header)
+- [ ] Saved as .docx or proper PDF
+
+## The Shortcut: Let AI Do This For Every Job
+
+Tailoring a resume for every application takes 20-30 minutes per job. AutoApply AI does it automatically — it reads the job description, identifies the keywords the ATS is looking for, adjusts your resume, and sends the application. All without you lifting a finger.
+
+[Build Your AI-Optimized Resume Free →](https://www.machmiles.com)
+    `,
+  },
+];
+
+// ─── BLOG COMPONENTS ──────────────────────────────────────────────────────────
+function renderMarkdown(md) {
+  // Simple markdown renderer for blog posts
+  const lines = md.trim().split("\n");
+  const elements = [];
+  let i = 0;
+  let key = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.startsWith("## ")) {
+      elements.push(<h2 key={key++} style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.3rem,2.5vw,1.6rem)", color: "#1e293b", margin: "2.5rem 0 1rem", letterSpacing: "-0.02em" }}>{line.slice(3)}</h2>);
+    } else if (line.startsWith("### ")) {
+      elements.push(<h3 key={key++} style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.15rem", color: "#1e293b", margin: "2rem 0 0.75rem" }}>{line.slice(4)}</h3>);
+    } else if (line.startsWith("#### ")) {
+      elements.push(<h4 key={key++} style={{ fontWeight: 700, fontSize: "1rem", color: "#334155", margin: "1.5rem 0 0.5rem" }}>{line.slice(5)}</h4>);
+    } else if (line.startsWith("| ")) {
+      // Table — collect all table rows
+      const tableLines = [];
+      while (i < lines.length && lines[i].startsWith("|")) {
+        if (!lines[i].match(/^\|[-| ]+\|$/)) tableLines.push(lines[i]);
+        i++;
+      }
+      const [headerRow, ...bodyRows] = tableLines;
+      const headers = headerRow.split("|").filter(Boolean).map(h => h.trim());
+      elements.push(
+        <div key={key++} style={{ overflowX: "auto", margin: "1.5rem 0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+            <thead>
+              <tr>{headers.map((h, j) => <th key={j} style={{ background: "#f1f5f9", padding: "10px 14px", textAlign: "left", fontWeight: 700, color: "#1e293b", borderBottom: "2px solid #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row, ri) => {
+                const cells = row.split("|").filter(Boolean).map(c => c.trim());
+                return <tr key={ri} style={{ borderBottom: "1px solid #e2e8f0" }}>{cells.map((c, ci) => <td key={ci} style={{ padding: "10px 14px", color: "#475569" }}>{c}</td>)}</tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    } else if (line.startsWith("- [ ] ")) {
+      // Checklist
+      const items = [];
+      while (i < lines.length && lines[i].startsWith("- [ ] ")) {
+        items.push(lines[i].slice(6));
+        i++;
+      }
+      elements.push(
+        <ul key={key++} style={{ listStyle: "none", padding: 0, margin: "1rem 0" }}>
+          {items.map((item, j) => (
+            <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "6px 0", color: "#475569", fontSize: "0.95rem" }}>
+              <span style={{ width: 18, height: 18, border: "2px solid #3B82F6", borderRadius: 4, flexShrink: 0, marginTop: 2, display: "inline-block" }} />
+              {item}
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    } else if (line.startsWith("- ")) {
+      // Bullet list — collect consecutive bullets
+      const items = [];
+      while (i < lines.length && lines[i].startsWith("- ")) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      elements.push(
+        <ul key={key++} style={{ paddingLeft: "1.5rem", margin: "0.75rem 0 1rem" }}>
+          {items.map((item, j) => <li key={j} style={{ color: "#475569", lineHeight: 1.75, marginBottom: 4, fontSize: "0.95rem" }} dangerouslySetInnerHTML={{ __html: inlineMarkdown(item) }} />)}
+        </ul>
+      );
+      continue;
+    } else if (line.match(/^\d+\. /)) {
+      // Ordered list
+      const items = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        items.push(lines[i].replace(/^\d+\. /, ""));
+        i++;
+      }
+      elements.push(
+        <ol key={key++} style={{ paddingLeft: "1.5rem", margin: "0.75rem 0 1rem" }}>
+          {items.map((item, j) => <li key={j} style={{ color: "#475569", lineHeight: 1.75, marginBottom: 4, fontSize: "0.95rem" }} dangerouslySetInnerHTML={{ __html: inlineMarkdown(item) }} />)}
+        </ol>
+      );
+      continue;
+    } else if (line.startsWith("---")) {
+      elements.push(<hr key={key++} style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "2rem 0" }} />);
+    } else if (line.startsWith("**") && line.endsWith("**") && !line.slice(2).includes("**")) {
+      elements.push(<p key={key++} style={{ fontWeight: 700, color: "#1e293b", margin: "1rem 0 0.25rem", fontSize: "0.95rem" }}>{line.slice(2, -2)}</p>);
+    } else if (line.trim() === "") {
+      // skip
+    } else {
+      elements.push(<p key={key++} style={{ color: "#475569", lineHeight: 1.85, margin: "0 0 1rem", fontSize: "0.97rem" }} dangerouslySetInnerHTML={{ __html: inlineMarkdown(line) }} />);
+    }
+    i++;
+  }
+  return elements;
+}
+
+function inlineMarkdown(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:0.88em;color:#0f172a">$1</code>')
+    .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, '<a href="$2" style="color:#3B82F6;text-decoration:underline" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function BlogPage({ onBack }) {
+  const [selected, setSelected] = useState(null);
+
+  const handleSelect = (post) => {
+    setSelected(post);
+    window.history.pushState(null, "", `/blog/${post.slug}`);
+    document.title = `${post.title} — MACHMILES Blog`;
+    window.scrollTo(0, 0);
+  };
+
+  const handleBack = () => {
+    if (selected) {
+      setSelected(null);
+      window.history.pushState(null, "", "/blog");
+      document.title = "Blog — AutoApply AI Tips & Job Search Guides | MACHMILES";
+      return;
+    }
+    onBack();
+  };
+
+  const CATEGORY_COLORS = {
+    "Job Search Strategy": { bg: "#eff6ff", text: "#1d4ed8" },
+    "Tools & Reviews": { bg: "#f0fdf4", text: "#15803d" },
+    "Resume Tips": { bg: "#fdf4ff", text: "#7e22ce" },
+  };
+
+  const nav = (
+    <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 }}>
+      <button onClick={() => { window.history.pushState(null, "", "/"); onBack(); }} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+        <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+      </button>
+      <button onClick={handleBack} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 18px", fontSize: "0.88rem", cursor: "pointer", color: "#64748b" }}>← {selected ? "All Articles" : "Back to Home"}</button>
+    </nav>
+  );
+
+  // Individual post view
+  if (selected) {
+    const cat = CATEGORY_COLORS[selected.category] || { bg: "#f1f5f9", text: "#334155" };
+    return (
+      <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif" }}>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+        {nav}
+        <div style={{ background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4rem 5% 3rem", textAlign: "center" }}>
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
+            <div style={{ display: "inline-block", background: cat.bg, color: cat.text, borderRadius: 100, padding: "5px 16px", fontSize: "0.78rem", fontWeight: 700, marginBottom: "1.25rem" }}>{selected.category}</div>
+            <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.6rem,4vw,2.4rem)", color: "#fff", margin: "0 0 1.25rem", lineHeight: 1.2, letterSpacing: "-0.02em" }}>{selected.title}</h1>
+            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.88rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+              <span>{selected.date}</span><span>·</span><span>{selected.readTime}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "3.5rem 5%" }}>
+          {renderMarkdown(selected.content)}
+          <div style={{ marginTop: "3rem", padding: "2rem", background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 16, textAlign: "center", border: "1px solid #bfdbfe" }}>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.3rem", color: "#1e293b", marginBottom: "0.75rem" }}>Start Applying Automatically Today</div>
+            <p style={{ color: "#475569", marginBottom: "1.25rem", fontSize: "0.95rem" }}>Join thousands of Indian job seekers using AutoApply AI to get more interviews with less effort.</p>
+            <button onClick={onBack} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "12px 32px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" }}>Get Started Free →</button>
+          </div>
+          <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "2rem" }}>
+            <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: "1rem" }}>More Articles</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {BLOG_POSTS.filter(p => p.slug !== selected.slug).slice(0, 3).map(p => (
+                <button key={p.slug} onClick={() => handleSelect(p)} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 18px", textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "0.92rem" }}>{p.title}</span>
+                  <span style={{ color: "#94a3b8", fontSize: "0.8rem", flexShrink: 0, marginLeft: 12 }}>→</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Blog listing view
+  return (
+    <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap'); .blog-card:hover{transform:translateY(-3px);box-shadow:0 8px 32px rgba(59,130,246,0.12)!important} .blog-card{transition:transform 0.2s,box-shadow 0.2s}`}</style>
+      {nav}
+      <div style={{ background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4rem 5% 3.5rem", textAlign: "center" }}>
+        <div style={{ display: "inline-block", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#a5b4fc", fontWeight: 700, marginBottom: "1.25rem" }}>📚 Career Guides & Job Search Tips</div>
+        <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(2rem,5vw,3rem)", color: "#fff", margin: "0 0 1rem", letterSpacing: "-0.03em" }}>The AutoApply AI Blog</h1>
+        <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "1.05rem", maxWidth: 540, margin: "0 auto" }}>Practical guides to help you get more interviews, optimize your resume, and automate your job search in India.</p>
+      </div>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "3.5rem 5%" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(290px,1fr))", gap: "1.5rem" }}>
+          {BLOG_POSTS.map(post => {
+            const cat = CATEGORY_COLORS[post.category] || { bg: "#f1f5f9", text: "#334155" };
+            return (
+              <button key={post.slug} className="blog-card" onClick={() => handleSelect(post)}
+                style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "1.75rem", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "inline-block", background: cat.bg, color: cat.text, borderRadius: 100, padding: "4px 12px", fontSize: "0.75rem", fontWeight: 700 }}>{post.category}</div>
+                <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1.05rem", color: "#1e293b", margin: 0, lineHeight: 1.4 }}>{post.title}</h2>
+                <p style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.6, margin: 0, flex: 1 }}>{post.excerpt}</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ color: "#94a3b8", fontSize: "0.78rem" }}>{post.date} · {post.readTime}</span>
+                  <span style={{ color: "#3B82F6", fontSize: "0.85rem", fontWeight: 600 }}>Read →</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: "4rem", background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 20, padding: "3rem", textAlign: "center", border: "1px solid #bfdbfe" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.5rem", color: "#1e293b", marginBottom: "0.75rem" }}>Ready to Automate Your Job Search?</div>
+          <p style={{ color: "#475569", marginBottom: "1.5rem" }}>Join 2,800+ Indian job seekers applying to 100+ jobs per day on autopilot.</p>
+          <button onClick={onBack} style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 36px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" }}>Get Started Free →</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WhiteLabelPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="White-Label AI Recruitment Platform"
+    subtitle="Empower Your Brand with AI-Powered Job Application Automation"
+    sections={[
+      { text: "MachMiles offers a fully customizable White-Label Solution for businesses, recruitment agencies, educational institutions, career consultants, and HR service providers who want to launch their own AI-powered job application platform without building the technology from scratch. Our white-label platform allows you to operate under your own brand, domain, and identity while leveraging MachMiles' intelligent automation engine." },
+      { heading: "What You Get", bullets: ["Complete White-Label Branding","Custom Domain Support","AI Auto Job Apply Engine","Resume Builder","AI Cover Letter Generator","Job Tracking Dashboard","Employer Dashboard","User Management","Analytics & Reporting","Secure Cloud Infrastructure","Razorpay Payment Integration","Subscription Management"] },
+      { heading: "Who Can Use It?", bullets: ["Recruitment Agencies","Universities & Colleges","Career Consultants","Staffing Companies","Job Portals","HR Tech Startups"] },
+      { heading: "Benefits", bullets: ["Launch in days instead of months","Zero development cost","Scalable infrastructure","Regular feature updates","Dedicated technical support"] },
+    ]}
+  />;
+}
+
+function AffiliatePage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Earn While Helping People Find Jobs"
+    subtitle="Become a MachMiles Affiliate and earn commissions by referring job seekers to our AI-powered platform."
+    sections={[
+      { text: "Whether you're a content creator, blogger, YouTuber, career coach, recruiter, or influencer, you can generate recurring income by recommending MachMiles." },
+      { heading: "Affiliate Benefits", bullets: ["Attractive Commission Structure","Dedicated Referral Dashboard","Real-Time Tracking","Monthly Payouts","Marketing Assets Provided","No Joining Fee"] },
+      { heading: "How It Works", bullets: ["Join our Affiliate Program","Receive your unique referral link","Share it with your audience","Earn commission for every successful subscription"] },
+      { heading: "Ideal For", bullets: ["Career Bloggers","LinkedIn Creators","YouTubers","HR Professionals","Career Consultants","Student Communities"] },
+    ]}
+  />;
+}
+
+function CareerCoachesPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Partner With MachMiles as a Career Coach"
+    subtitle="Help your clients achieve career success faster with the power of AI."
+    sections={[
+      { text: "MachMiles partners with experienced career coaches to offer end-to-end career support, including resume reviews, interview preparation, LinkedIn optimization, career planning, and job search strategies." },
+      { heading: "Partnership Benefits", bullets: ["Access to New Clients","Featured Coach Profile","Lead Generation","AI Tools for Your Clients","Revenue Sharing Opportunities","Dedicated Support"] },
+      { heading: "Services Coaches Can Offer", bullets: ["Resume Review","Interview Coaching","LinkedIn Profile Optimization","Career Counselling","Salary Negotiation","Personal Branding"] },
+    ]}
+  />;
+}
+
+function HREmployersPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Hire Better Talent with MachMiles"
+    subtitle="MachMiles helps employers discover qualified candidates faster through intelligent AI-powered recruitment tools."
+    sections={[
+      { text: "Whether you're hiring one employee or building an entire workforce, we streamline candidate sourcing and recruitment management." },
+      { heading: "Employer Solutions", bullets: ["Candidate Database","Resume Search","AI Candidate Matching","Bulk Hiring","Job Posting","Employer Dashboard","Recruitment Analytics","Interview Scheduling"] },
+      { heading: "Why Employers Choose MachMiles", bullets: ["Faster Hiring","Better Candidate Matching","Reduced Hiring Costs","AI-Driven Recommendations","Simplified Recruitment Workflow"] },
+      { heading: "Industries We Serve", bullets: ["Information Technology","Banking & Finance","Manufacturing","Healthcare","Retail","Logistics","Education","Startups"] },
+    ]}
+  />;
+}
+
+function CampusConnectPage({ onBack }) {
+  return <PartnerPage onBack={onBack}
+    title="Empowering Students. Connecting Campuses with Careers."
+    subtitle="MachMiles Campus Connect bridges the gap between education and employment by partnering with colleges, universities, and training institutes."
+    sections={[
+      { text: "Our platform enables students to discover opportunities, build professional resumes, and automatically apply to relevant jobs using AI." },
+      { heading: "Campus Benefits", bullets: ["AI Resume Builder","Auto Job Applications","Internship Opportunities","Campus Placement Support","Career Resources","Placement Analytics","Student Performance Dashboard"] },
+      { heading: "Institution Benefits", bullets: ["Improved Placement Rates","Dedicated Placement Dashboard","Student Progress Tracking","Employer Network Access","Industry Collaborations"] },
+      { heading: "Student Benefits", bullets: ["Build Professional Resumes","Apply to Hundreds of Jobs Automatically","Track Applications","AI Career Guidance","Interview Preparation Resources"] },
+    ]}
+  />;
+}
+
+// ─── CITY LANDING PAGES ───────────────────────────────────────────────────────
+const CITY_DATA = {
+  bangalore: {
+    name: "Bangalore", state: "Karnataka", slug: "bangalore",
+    title: "AI Job Application Automation in Bangalore — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Bangalore daily. AI-powered job automation for Bangalore's tech, startup, and IT job market.",
+    roles: ["Software Engineer", "Data Scientist", "Product Manager", "DevOps Engineer", "UX Designer", "Backend Developer", "Full Stack Developer", "ML Engineer"],
+    companies: ["Flipkart", "Swiggy", "Zomato", "Razorpay", "Zepto", "PhonePe", "Meesho", "Dunzo", "Byju's", "Ola"],
+    stat: "4.2 lakh", jobStat: "tech jobs posted monthly in Bangalore",
+    intro: "Bangalore is India's Silicon Valley — home to 67% of India's top tech companies, 12,000+ startups, and over 4 lakh tech job openings every month. The competition is fierce. The companies that get your attention are the ones that apply early, often, and with a tailored resume. AutoApply AI was built for exactly this market.",
+  },
+  mumbai: {
+    name: "Mumbai", state: "Maharashtra", slug: "mumbai",
+    title: "AI Job Application Automation in Mumbai — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Mumbai daily. AI-powered job automation for Mumbai's finance, media, and corporate job market.",
+    roles: ["Financial Analyst", "Investment Banker", "Marketing Manager", "Operations Lead", "Sales Executive", "Business Analyst", "Content Strategist", "HR Manager"],
+    companies: ["HDFC Bank", "Tata Consultancy", "Reliance", "Aditya Birla", "Godrej", "Bombay Stock Exchange", "Zee Media", "BookMyShow", "Urban Company", "ICICI Bank"],
+    stat: "2.8 lakh", jobStat: "jobs posted monthly in Mumbai",
+    intro: "Mumbai is India's financial capital and the hub for banking, BFSI, media, and corporate roles. From Wall Street-style finance jobs to creative roles in Bollywood and advertising, the city offers unmatched opportunity — if you can cut through the noise. AutoApply AI ensures your application reaches every relevant company before the posting expires.",
+  },
+  delhi: {
+    name: "Delhi NCR", state: "Delhi", slug: "delhi",
+    title: "AI Job Application Automation in Delhi NCR — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Delhi NCR daily. AI-powered job automation for Delhi's government, IT, and corporate job market.",
+    roles: ["Government Relations", "Policy Analyst", "Software Developer", "Consultant", "Digital Marketer", "IT Manager", "Legal Associate", "Civil Services Prep"],
+    companies: ["HCL Technologies", "Paytm", "IndiaMart", "Naukri (Info Edge)", "PolicyBazaar", "Lenskart", "MakeMyTrip", "OYO", "Snapdeal", "Delhivery"],
+    stat: "3.1 lakh", jobStat: "jobs posted monthly in Delhi NCR",
+    intro: "Delhi NCR is India's government and consulting capital, with a rapidly growing startup ecosystem in Gurugram and Noida. The region hosts headquarters of major IT companies, policy organizations, and some of India's fastest-growing startups. AutoApply AI scans all major job boards for Delhi NCR roles and applies automatically on your behalf.",
+  },
+  hyderabad: {
+    name: "Hyderabad", state: "Telangana", slug: "hyderabad",
+    title: "AI Job Application Automation in Hyderabad — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Hyderabad daily. AI-powered job automation for Hyderabad's IT, pharma, and tech job market.",
+    roles: ["Software Engineer", "QA Engineer", "Data Analyst", "Cloud Architect", "SAP Consultant", "Pharma Researcher", "Network Engineer", "Cybersecurity Analyst"],
+    companies: ["Microsoft India", "Google Hyderabad", "Amazon India", "Apple India", "Meta India", "Dr. Reddy's", "Infosys", "Wipro", "Cyient", "Gland Pharma"],
+    stat: "2.3 lakh", jobStat: "jobs posted monthly in Hyderabad",
+    intro: "Hyderabad's HITEC City has become the preferred destination for global tech giants — Microsoft, Google, Amazon, Apple, and Meta all have major development centers here. The pharma corridor adds another dimension. With so many MNC opportunities, the competition is global-level. AutoApply AI helps you apply faster than any other candidate.",
+  },
+  pune: {
+    name: "Pune", state: "Maharashtra", slug: "pune",
+    title: "AI Job Application Automation in Pune — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Pune daily. AI-powered job automation for Pune's IT, automotive, and manufacturing job market.",
+    roles: ["Embedded Engineer", "Automotive Engineer", "Java Developer", "Test Engineer", "IT Consultant", "Data Engineer", "VLSI Engineer", "Project Manager"],
+    companies: ["Tata Motors", "Bajaj Auto", "Persistent Systems", "Cognizant Pune", "Infosys Pune", "Tech Mahindra", "Capgemini", "KPIT Technologies", "Cummins India", "Volkswagen India"],
+    stat: "1.8 lakh", jobStat: "jobs posted monthly in Pune",
+    intro: "Pune is a unique blend of IT services, automotive engineering, and manufacturing — making it one of India's most diverse job markets. Whether you're an embedded systems engineer targeting automotive companies or an IT professional at one of the many MNC campuses, AutoApply AI covers all verticals and applies to matching roles across every job board.",
+  },
+  chennai: {
+    name: "Chennai", state: "Tamil Nadu", slug: "chennai",
+    title: "AI Job Application Automation in Chennai — AutoApply AI",
+    desc: "Auto apply to 100+ jobs in Chennai daily. AI-powered job automation for Chennai's IT, manufacturing, and services job market.",
+    roles: ["Java Developer", "Manufacturing Engineer", "IT Analyst", "Automobile Engineer", "Hardware Engineer", "Supply Chain Manager", "SAP Consultant", "Network Administrator"],
+    companies: ["Zoho", "Freshworks", "TVS Motors", "Hyundai India", "Ford India", "Ashok Leyland", "Cognizant Chennai", "Wipro Chennai", "HCL Chennai", "Ramco Systems"],
+    stat: "1.5 lakh", jobStat: "jobs posted monthly in Chennai",
+    intro: "Chennai is the Detroit of India — a powerhouse for automobile manufacturing — while simultaneously being home to global IT giants and product companies like Zoho and Freshworks. AutoApply AI is especially effective in Chennai where Naukri and LinkedIn both carry high volumes of local listings that change daily.",
+  },
+};
+
+function CityLandingPage({ city, onBack, onSignup }) {
+  const d = CITY_DATA[city];
+  if (!d) return null;
+
+  useEffect(() => {
+    document.title = d.title;
+    const descTag = document.querySelector('meta[name="description"]');
+    if (descTag) descTag.setAttribute("content", d.desc);
+  }, []);
+
+  const S = {
+    page: { minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif", color: "#1e293b" },
+    nav: { position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 },
+    hero: { background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4.5rem 5% 4rem", textAlign: "center" },
+    section: { maxWidth: 960, margin: "0 auto", padding: "4rem 5%" },
+    chip: { display: "inline-block", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 100, padding: "6px 18px", fontSize: "0.8rem", color: "#a5b4fc", fontWeight: 700, marginBottom: "1.25rem" },
+    h1: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.8rem,5vw,3rem)", color: "#fff", margin: "0 0 1.25rem", letterSpacing: "-0.03em", lineHeight: 1.15 },
+    sub: { color: "rgba(255,255,255,0.6)", fontSize: "1.05rem", maxWidth: 600, margin: "0 auto 2rem", lineHeight: 1.75 },
+    cta: { background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 36px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" },
+    h2: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", margin: "0 0 1rem", letterSpacing: "-0.02em" },
+    card: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "1.25rem 1.5rem" },
+    stat: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "2.5rem", color: "#3B82F6", marginBottom: 4 },
+  };
+
+  return (
+    <div style={S.page}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+      <nav style={S.nav}>
+        <button onClick={onBack} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+        </button>
+        <button onClick={onBack} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 18px", fontSize: "0.88rem", cursor: "pointer", color: "#64748b" }}>← Back to Home</button>
+      </nav>
+
+      <div style={S.hero}>
+        <div style={S.chip}>📍 {d.name}, {d.state}</div>
+        <h1 style={S.h1}>AI Job Search Automation<br />in {d.name}</h1>
+        <p style={S.sub}>Apply to 100+ {d.name} jobs daily — automatically. Our AI searches LinkedIn, Naukri, Indeed & 50+ boards and applies on your behalf, around the clock.</p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <button style={S.cta} onClick={onSignup}>Start Applying in {d.name} — Free</button>
+          <a href="/blog" style={{ ...S.cta, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", textDecoration: "none", display: "inline-block" }}>Read Job Search Guides</a>
+        </div>
+      </div>
+
+      <div style={S.section}>
+        {/* Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: "1.5rem", marginBottom: "4rem" }}>
+          {[
+            { val: d.stat, label: d.jobStat },
+            { val: "50+", label: "Job boards scanned automatically" },
+            { val: "100+", label: "Applications sent per day per user" },
+            { val: "3x", label: "More interview calls vs manual applying" },
+          ].map((s, i) => (
+            <div key={i} style={{ ...S.card, textAlign: "center" }}>
+              <div style={S.stat}>{s.val}</div>
+              <div style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.5 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Intro */}
+        <div style={{ marginBottom: "4rem" }}>
+          <div style={{ display: "inline-block", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 100, padding: "5px 16px", fontSize: "0.78rem", color: "#1d4ed8", fontWeight: 700, marginBottom: "1rem" }}>About the {d.name} Job Market</div>
+          <h2 style={S.h2}>Why {d.name} Job Seekers Use AutoApply AI</h2>
+          <p style={{ color: "#475569", lineHeight: 1.85, fontSize: "1rem" }}>{d.intro}</p>
+        </div>
+
+        {/* Top Roles */}
+        <div style={{ marginBottom: "4rem" }}>
+          <h2 style={S.h2}>Top Roles We Auto-Apply For in {d.name}</h2>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: "1rem" }}>
+            {d.roles.map(r => (
+              <span key={r} style={{ background: "#eff6ff", color: "#1d4ed8", borderRadius: 100, padding: "8px 18px", fontSize: "0.88rem", fontWeight: 600 }}>{r}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Companies */}
+        <div style={{ marginBottom: "4rem" }}>
+          <h2 style={S.h2}>Top Companies Hiring in {d.name}</h2>
+          <p style={{ color: "#64748b", marginBottom: "1.25rem" }}>AutoApply AI finds and applies to open roles at these companies and hundreds more — automatically.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: "0.75rem" }}>
+            {d.companies.map(c => (
+              <div key={c} style={{ ...S.card, textAlign: "center", fontWeight: 600, color: "#334155", fontSize: "0.9rem" }}>{c}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* How It Works */}
+        <div style={{ marginBottom: "4rem" }}>
+          <h2 style={S.h2}>How It Works for {d.name} Job Seekers</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "1.25rem", marginTop: "1.5rem" }}>
+            {[
+              { step: "1", title: "Upload Your Resume", desc: "Upload once. Our AI parses your skills, experience, and targets." },
+              { step: "2", title: "Set Preferences", desc: `Choose ${d.name} as your location, pick roles, salary range, and notice period.` },
+              { step: "3", title: "AI Applies 24/7", desc: "The AI applies to matching jobs round the clock — even while you sleep." },
+              { step: "4", title: "Get Interviews", desc: "Track all applications and responses in one dashboard. Reply fast." },
+            ].map(s => (
+              <div key={s.step} style={{ ...S.card, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ width: 36, height: 36, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "1rem" }}>{s.step}</div>
+                <div style={{ fontWeight: 700, color: "#1e293b", fontSize: "0.95rem" }}>{s.title}</div>
+                <div style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.6 }}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div style={{ background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 20, padding: "3rem", textAlign: "center", border: "1px solid #bfdbfe" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", marginBottom: "0.75rem" }}>Start Your Automated Job Search in {d.name}</div>
+          <p style={{ color: "#475569", marginBottom: "1.5rem" }}>Free plan available. No credit card required. Start getting more interviews in {d.name} today.</p>
+          <button style={S.cta} onClick={onSignup}>Get Started Free →</button>
+        </div>
+
+        {/* Internal links */}
+        <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "2rem" }}>
+          <div style={{ color: "#94a3b8", fontSize: "0.8rem", marginBottom: "0.75rem" }}>Other cities</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {Object.values(CITY_DATA).filter(c => c.slug !== city).map(c => (
+              <a key={c.slug} href={`/jobs-${c.slug}`} style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>AI Job Search in {c.name} →</a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── KEYWORD LANDING PAGES ────────────────────────────────────────────────────
+const KEYWORD_PAGES = {
+  "auto-apply-jobs-india": {
+    title: "Auto Apply Jobs in India — AI-Powered Automatic Job Applications",
+    desc: "Automatically apply to 100+ jobs per day in India. Upload resume once, AI applies to LinkedIn, Naukri, Indeed & 50+ job boards without you lifting a finger.",
+    h1: "Auto Apply to Jobs in India — Powered by AI",
+    intro: "Stop spending hours applying to jobs manually. AutoApply AI finds matching jobs across 50+ Indian and global job boards and submits applications automatically — 100+ per day, while you sleep.",
+    features: [
+      { icon: "🤖", title: "Fully Automatic Applications", desc: "AI applies to matching jobs 24/7 — no clicks required from your side." },
+      { icon: "🎯", title: "Smart Job Matching", desc: "Only applies to jobs that match your title, skills, salary, and location preferences." },
+      { icon: "📄", title: "AI Resume Tailoring", desc: "Your resume is auto-customized for each job's keywords before applying." },
+      { icon: "📊", title: "Real-Time Dashboard", desc: "Track every application, company response, and interview invite in one place." },
+      { icon: "🌐", title: "50+ Job Boards", desc: "LinkedIn, Naukri, Indeed, Wellfound, Shine, TimesJobs and more — all covered." },
+      { icon: "🔒", title: "Your Data is Safe", desc: "Bank-grade encryption. We never share your information with third parties." },
+    ],
+    faq: [
+      { q: "Is auto-applying to jobs safe?", a: "Yes. AutoApply AI uses official job application forms — the same process as applying manually. There is no scraping or ToS violation involved." },
+      { q: "How many jobs can I auto-apply to per day?", a: "Free plan: up to 10 applications per day. Pro plan: 100+ per day. Premium plan: unlimited." },
+      { q: "Which job boards are supported?", a: "LinkedIn, Naukri, Indeed, Wellfound, Shine, TimesJobs, Glassdoor, and 50+ more including company career pages." },
+      { q: "Can I review applications before they're sent?", a: "Yes — choose 'Review Mode' and approve each application before it's submitted." },
+    ],
+  },
+  "naukri-auto-apply": {
+    title: "Naukri Auto Apply — Automatically Apply to Naukri Jobs with AI",
+    desc: "Auto apply to Naukri jobs automatically. Our AI scans Naukri daily, finds matching jobs, and applies on your behalf — 100+ applications per day.",
+    h1: "Auto Apply to Naukri Jobs — Let AI Do the Work",
+    intro: "Naukri.com has 90 lakh+ active job listings. Manually going through them takes hours. AutoApply AI scans Naukri every day, identifies roles that match your profile, and applies automatically — with a resume tailored to each job.",
+    features: [
+      { icon: "🔍", title: "Naukri Job Scanning", desc: "AI monitors Naukri 24/7 and picks up new job postings the moment they go live." },
+      { icon: "⚡", title: "Instant Applications", desc: "New job posted? Your application is in within minutes — before hundreds of other candidates." },
+      { icon: "📄", title: "Resume Keyword Matching", desc: "AI matches your resume keywords to each Naukri job description before applying." },
+      { icon: "🔔", title: "Smart Alerts", desc: "Get notified when companies respond to applications — never miss an interview call." },
+      { icon: "📈", title: "Naukri Profile Boost", desc: "We apply using your strongest resume version, maximizing your Naukri profile match score." },
+      { icon: "🎯", title: "Role-Specific Targeting", desc: "Set exact roles, salary bands, and experience levels — only apply to what truly fits." },
+    ],
+    faq: [
+      { q: "Does AutoApply AI work with Naukri?", a: "Yes, Naukri is one of our primary job boards. We scan it daily for new listings matching your profile." },
+      { q: "Will applying to too many Naukri jobs hurt my profile?", a: "No. Each application is tailored to the job, so your match score remains high. Quality is maintained even at volume." },
+      { q: "How often does the AI check Naukri for new jobs?", a: "Every few hours. New listings are picked up quickly so you're always among the first to apply." },
+      { q: "Can I target specific companies on Naukri?", a: "Yes — add target companies in your preferences and AutoApply AI will prioritize their listings." },
+    ],
+  },
+  "linkedin-auto-apply": {
+    title: "LinkedIn Easy Apply Automation — Auto Apply to LinkedIn Jobs in India",
+    desc: "Automate LinkedIn Easy Apply for jobs in India. AI applies to 100+ LinkedIn jobs daily with a tailored resume and cover letter for each role.",
+    h1: "LinkedIn Job Auto Apply — AI Automation for Indian Job Seekers",
+    intro: "LinkedIn Easy Apply lets candidates apply in seconds — which means competition is fierce and volume matters. AutoApply AI applies to LinkedIn Easy Apply jobs automatically, with a resume and cover letter tailored to each role, giving you a competitive edge through both speed and personalization.",
+    features: [
+      { icon: "⚡", title: "LinkedIn Easy Apply Automation", desc: "Auto-applies to all LinkedIn Easy Apply jobs matching your profile — instantly." },
+      { icon: "✉️", title: "AI Cover Letters", desc: "Generates a unique, role-specific cover letter for every LinkedIn application." },
+      { icon: "🎯", title: "Role + Location Targeting", desc: "Filter by job title, location, experience level, company size, and remote preference." },
+      { icon: "👀", title: "Application Tracking", desc: "See every LinkedIn application, its status, and recruiter activity in one dashboard." },
+      { icon: "🔗", title: "LinkedIn Profile Integration", desc: "Uses your LinkedIn profile data alongside your resume for stronger applications." },
+      { icon: "📊", title: "Response Analytics", desc: "Track which job types and companies respond most — optimize your targeting over time." },
+    ],
+    faq: [
+      { q: "Does this work for LinkedIn Easy Apply jobs?", a: "Yes — LinkedIn Easy Apply jobs are our primary target. These have the highest application volume and fastest response rates." },
+      { q: "Can I auto-apply to LinkedIn jobs with a cover letter?", a: "Yes. AutoApply AI generates a unique cover letter for each job based on the job description and your profile." },
+      { q: "Is LinkedIn auto-apply allowed?", a: "AutoApply AI uses official application processes — the same forms you'd fill manually. We do not use unofficial scraping or automation that violates LinkedIn ToS." },
+      { q: "How many LinkedIn jobs can I apply to per day?", a: "Pro plan: 100+ per day. Premium plan: unlimited applications." },
+    ],
+  },
+};
+
+function KeywordLandingPage({ pageKey, onBack, onSignup }) {
+  const d = KEYWORD_PAGES[pageKey];
+  if (!d) return null;
+
+  useEffect(() => {
+    document.title = d.title;
+    const descTag = document.querySelector('meta[name="description"]');
+    if (descTag) descTag.setAttribute("content", d.desc);
+  }, []);
+
+  const S = {
+    page: { minHeight: "100vh", background: "#fff", fontFamily: "Inter,sans-serif", color: "#1e293b" },
+    nav: { position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 5%", height: 64 },
+    hero: { background: "linear-gradient(135deg,#020817,#1e1b4b)", padding: "4.5rem 5% 4rem", textAlign: "center" },
+    section: { maxWidth: 960, margin: "0 auto", padding: "4rem 5%" },
+    h2: { fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", margin: "0 0 1rem", letterSpacing: "-0.02em" },
+    card: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "1.5rem" },
+    cta: { background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 36px", fontWeight: 700, fontSize: "1rem", cursor: "pointer" },
+  };
+
+  return (
+    <div style={S.page}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap');`}</style>
+      <nav style={S.nav}>
+        <button onClick={onBack} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#3B82F6,#8B5CF6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.9rem" }}>A</div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>AutoApply AI</span>
+        </button>
+        <button onClick={onBack} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 18px", fontSize: "0.88rem", cursor: "pointer", color: "#64748b" }}>← Back to Home</button>
+      </nav>
+
+      <div style={S.hero}>
+        <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "clamp(1.8rem,5vw,2.8rem)", color: "#fff", margin: "0 0 1.25rem", letterSpacing: "-0.03em", lineHeight: 1.15 }}>{d.h1}</h1>
+        <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "1.05rem", maxWidth: 640, margin: "0 auto 2rem", lineHeight: 1.75 }}>{d.intro}</p>
+        <button style={S.cta} onClick={onSignup}>Start for Free — No Credit Card</button>
+      </div>
+
+      <div style={S.section}>
+        {/* Features */}
+        <h2 style={S.h2}>Everything You Get</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: "1.25rem", marginBottom: "4rem" }}>
+          {d.features.map((f, i) => (
+            <div key={i} style={S.card}>
+              <div style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>{f.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: "0.97rem", color: "#1e293b", marginBottom: "0.4rem" }}>{f.title}</div>
+              <div style={{ color: "#64748b", fontSize: "0.88rem", lineHeight: 1.6 }}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* FAQ */}
+        <h2 style={S.h2}>Frequently Asked Questions</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "4rem" }}>
+          {d.faq.map((f, i) => (
+            <div key={i} style={{ ...S.card, background: "#fff" }}>
+              <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: "0.5rem", fontSize: "0.95rem" }}>Q: {f.q}</div>
+              <div style={{ color: "#475569", fontSize: "0.92rem", lineHeight: 1.7 }}>{f.a}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Plans */}
+        <div style={{ background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderRadius: 20, padding: "3rem", textAlign: "center", border: "1px solid #bfdbfe", marginBottom: "3rem" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#1e293b", marginBottom: "0.75rem" }}>Start Applying Automatically Today</div>
+          <p style={{ color: "#475569", marginBottom: "1.5rem" }}>Free plan available. Pro from ₹599/month. No credit card required to start.</p>
+          <button style={S.cta} onClick={onSignup}>Get Started Free →</button>
+        </div>
+
+        {/* Internal links */}
+        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "2rem" }}>
+          <div style={{ color: "#94a3b8", fontSize: "0.8rem", marginBottom: "0.75rem" }}>Related pages</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+            <a href="/auto-apply-jobs-india" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Auto Apply Jobs India</a>
+            <a href="/naukri-auto-apply" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Naukri Auto Apply</a>
+            <a href="/linkedin-auto-apply" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>LinkedIn Auto Apply</a>
+            <a href="/blog" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Job Search Guides</a>
+            <a href="/pricing" style={{ color: "#3B82F6", fontSize: "0.88rem", textDecoration: "none" }}>Pricing</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ABOUT PAGE ───────────────────────────────────────────────────────────────
 function AboutPage({ onBack }) {
   const css = `
@@ -5349,7 +6577,7 @@ export default function App() {
       }
       return;
     }
-    setScreen(u.onboarded === false ? "onboarding" : "app");
+    setScreen(needsOnboarding(u) ? "onboarding" : "app");
   };
 
   useEffect(() => {
@@ -5367,6 +6595,19 @@ export default function App() {
       setScreen("aboutus");
       return;
     }
+    if (path === "/white-label-solution") { setScreen("white-label"); return; }
+    if (path === "/affiliate-program") { setScreen("affiliate"); return; }
+    if (path === "/career-coaches") { setScreen("career-coaches"); return; }
+    if (path === "/hr-employers") { setScreen("hr-employers"); return; }
+    if (path === "/campus-connect") { setScreen("campus-connect"); return; }
+    if (path === "/blog" || path.startsWith("/blog/")) { setScreen("blog"); return; }
+    // City pages
+    const cityMatch = path.match(/^\/jobs-(bangalore|mumbai|delhi|hyderabad|pune|chennai)$/);
+    if (cityMatch) { setScreen(`city-${cityMatch[1]}`); return; }
+    // Keyword landing pages
+    if (path === "/auto-apply-jobs-india") { setScreen("kw-auto-apply-jobs-india"); return; }
+    if (path === "/naukri-auto-apply") { setScreen("kw-naukri-auto-apply"); return; }
+    if (path === "/linkedin-auto-apply") { setScreen("kw-linkedin-auto-apply"); return; }
     const POLICY_PATHS = {
       "/privacy-policy": "privacy",
       "/terms": "terms",
@@ -5398,7 +6639,7 @@ export default function App() {
               const me = await apiGet("/auth/me");
               if (me.success && me.data) {
                 setUser(me.data);
-                setScreen(me.data.onboarded === false ? "onboarding" : "app");
+                setScreen(needsOnboarding(me.data) ? "onboarding" : "app");
                 return;
               }
             }
@@ -5409,7 +6650,7 @@ export default function App() {
           const me = await apiGet("/auth/me");
           if (me.success && me.data) {
             setUser(me.data);
-            setScreen(me.data.onboarded === false ? "onboarding" : "app");
+            setScreen(needsOnboarding(me.data) ? "onboarding" : "app");
           } else {
             setScreen("landing");
           }
@@ -5422,16 +6663,51 @@ export default function App() {
 
     const token = getToken();
     if (!token) { setScreen("landing"); return; }
-    apiGet("/auth/me").then(data => {
-      if (data.success && data.data) {
-        setUser(data.data);
-        setScreen(data.data.onboarded === false ? "onboarding" : "app");
-      } else {
-        clearTokens();
-        setScreen("landing");
-      }
-    });
+
+    const tryMe = (attempt = 1) => {
+      apiGet("/auth/me").then(data => {
+        if (data.success && data.data) {
+          setUser(data.data);
+          setScreen(needsOnboarding(data.data) ? "onboarding" : "app");
+        } else if (attempt < 3) {
+          // Retry up to 2 more times (cold start / transient failure)
+          setTimeout(() => tryMe(attempt + 1), 800 * attempt);
+        } else {
+          clearTokens();
+          setScreen("landing");
+        }
+      }).catch(() => {
+        if (attempt < 3) {
+          setTimeout(() => tryMe(attempt + 1), 800 * attempt);
+        } else {
+          clearTokens();
+          setScreen("landing");
+        }
+      });
+    };
+    tryMe();
   }, []);
+
+  useEffect(() => {
+    const META = {
+      landing:         { title: "AutoApply AI by MACHMILES — AI-Powered Job Application Automation in India", desc: "India's #1 AI job application automation platform. Upload your resume once and our AI finds and applies to 100+ matching jobs on LinkedIn, Naukri, Indeed automatically." },
+      pricing:         { title: "Pricing — AutoApply AI by MACHMILES | Pro & Premium Plans", desc: "Affordable AI job application automation plans starting at ₹599/month. Apply to 100+ jobs daily automatically. Free plan available." },
+      aboutus:         { title: "About MACHMILES — AI Career Automation Company India", desc: "MACHMILES is India's leading AI-powered career automation company helping job seekers apply to more jobs, faster, with less effort." },
+      donations:       { title: "Support MACHMILES — Help Us Empower Job Seekers in India", desc: "Support MACHMILES and help us make AI-powered job application automation accessible to every job seeker in India." },
+      "white-label":   { title: "White Label AI Job Automation Solution — MACHMILES", desc: "Launch your own AI-powered job platform with MACHMILES white-label solution. Customized branding, full features, ready to deploy." },
+      affiliate:       { title: "Affiliate Program — Earn with MACHMILES AutoApply AI", desc: "Join the MACHMILES affiliate program and earn commissions by referring job seekers to India's #1 AI job application platform." },
+      "career-coaches": { title: "Career Coaches — Partner with MACHMILES AutoApply AI", desc: "Partner with MACHMILES to offer your clients AI-powered job application automation. Scale your career coaching business." },
+      "hr-employers":  { title: "For HR & Employers — Post Jobs on MACHMILES AutoApply AI", desc: "Reach thousands of active job seekers using MACHMILES AutoApply AI. Find the right candidates faster with our AI matching platform." },
+      "campus-connect": { title: "Campus Connect — AI Job Placement for Colleges | MACHMILES", desc: "MACHMILES Campus Connect helps students and freshers get placed faster with AI-powered job application automation." },
+      blog:            { title: "Blog — AI Job Search Tips, Resume Guides & Career Advice | MACHMILES", desc: "Practical guides for Indian job seekers: how to auto apply to 100 jobs, beat ATS, optimize your resume, and land more interviews using AI." },
+    };
+    const m = META[screen];
+    if (m) {
+      document.title = m.title;
+      const descTag = document.querySelector('meta[name="description"]');
+      if (descTag) descTag.setAttribute("content", m.desc);
+    }
+  }, [screen]);
 
   if (screen === "loading") return (
     <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "Inter,sans-serif", flexDirection: "column", gap: 16 }}>
@@ -5449,7 +6725,21 @@ export default function App() {
   const goToPricing = () => { window.history.pushState(null, "", "/Pricing"); setScreen("pricing"); };
   const goToDonations = () => { window.history.pushState(null, "", "/donations"); setScreen("donations"); };
 
+  if (screen === "blog") return <BlogPage onBack={goHome} />;
+  // City pages
+  for (const city of ["bangalore","mumbai","delhi","hyderabad","pune","chennai"]) {
+    if (screen === `city-${city}`) return <CityLandingPage city={city} onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
+  }
+  // Keyword pages
+  if (screen === "kw-auto-apply-jobs-india") return <KeywordLandingPage pageKey="auto-apply-jobs-india" onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
+  if (screen === "kw-naukri-auto-apply") return <KeywordLandingPage pageKey="naukri-auto-apply" onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
+  if (screen === "kw-linkedin-auto-apply") return <KeywordLandingPage pageKey="linkedin-auto-apply" onBack={goHome} onSignup={() => { window.history.pushState(null,"","/"); setScreen("signup"); }} />;
   if (screen === "aboutus") return <AboutPage onBack={goHome} />;
+  if (screen === "white-label") return <WhiteLabelPage onBack={goHome} />;
+  if (screen === "affiliate") return <AffiliatePage onBack={goHome} />;
+  if (screen === "career-coaches") return <CareerCoachesPage onBack={goHome} />;
+  if (screen === "hr-employers") return <HREmployersPage onBack={goHome} />;
+  if (screen === "campus-connect") return <CampusConnectPage onBack={goHome} />;
   if (screen === "donations") return <DonationsPage onBack={goHome} />;
   if (screen === "pricing") return <PricingPage onSignup={() => { window.history.pushState(null, "", "/"); setScreen("signup"); }} onLogin={() => { window.history.pushState(null, "", "/"); setScreen("login"); }} onBack={goHome} />;
   if (screen === "landing") return <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} onPolicy={goToPolicy} />;
