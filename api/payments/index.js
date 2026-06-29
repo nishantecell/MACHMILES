@@ -12,6 +12,15 @@ const PLANS = {
 
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
+
+  // Diagnostic: GET /api/payments returns current key config
+  if (req.method === 'GET') {
+    return ok(res, {
+      key_id: process.env.RAZORPAY_KEY_ID || 'NOT SET',
+      secret_length: process.env.RAZORPAY_KEY_SECRET?.length || 0,
+    });
+  }
+
   if (req.method !== 'POST') return badReq(res, 'Method not allowed');
 
   const user = await authenticate(req, res);
