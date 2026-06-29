@@ -24,7 +24,16 @@ const setTokens = (access, refresh) => {
 const clearTokens = () => {
   localStorage.removeItem("aa_access_token");
   localStorage.removeItem("aa_refresh_token");
+  localStorage.removeItem("aa_user_cache");
 };
+
+// Cache user object so page refresh never logs user out due to cold-start API delays
+const getCachedUser = () => { try { return JSON.parse(localStorage.getItem("aa_user_cache")); } catch { return null; } };
+const setCachedUser = (u) => { try { localStorage.setItem("aa_user_cache", JSON.stringify(u)); } catch {} };
+
+// Per-user onboarding flag as backup in case API save fails
+const getOnboardedFlag = (id) => localStorage.getItem(`aa_ob_${id}`) === "1";
+const setOnboardedFlag = (id) => localStorage.setItem(`aa_ob_${id}`, "1");
 
 // Set by AppShell when admin is viewing another user's dashboard
 let __viewAsUserId = null;
@@ -57,8 +66,18 @@ const apiDelete = (path)       => api(path, { method: "DELETE" });
 // Admin gets full premium access everywhere
 const effectivePlan = (profile) => profile?.role === "admin" ? "premium" : (profile?.plan || "free");
 
-// User needs onboarding only if onboarded flag is false AND no profile data exists yet
-const needsOnboarding = (u) => !u?.onboarded && !u?.desired_job_title && !u?.location;
+// Only brand-new accounts (registered in last 30 min) need onboarding
+const needsOnboarding = (u) => {
+  if (!u) return false;
+  if (u.onboarded === true) return false;
+  if (u.desired_job_title || u.location) return false;
+  if (getOnboardedFlag(u.id)) return false;
+  if (u.created_at) {
+    const ageMs = Date.now() - new Date(u.created_at).getTime();
+    if (ageMs > 30 * 60 * 1000) return false;
+  }
+  return u.onboarded === false;
+};
 
 // ─── PLANS ────────────────────────────────────────────────────────────────────
 const PLANS = [
@@ -1068,6 +1087,8 @@ function Onboarding({ user, onComplete }) {
       current_salary: prefs.current_salary,
       onboarded: true,
     });
+    // Backup flag so onboarding is never re-shown even if API save is delayed
+    if (user?.id) setOnboardedFlag(user.id);
     setSaving(false);
     onComplete(navToResume ? "Resume" : null);
   };

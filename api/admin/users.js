@@ -69,11 +69,28 @@ export default async function handler(req, res) {
       const countMap = {};
       (appCounts || []).forEach(a => { countMap[a.user_id] = (countMap[a.user_id] || 0) + 1; });
 
-      return ok(res, (profiles || []).map(p => ({
+      const profileIds = new Set((profiles || []).map(p => p.id));
+      const profileRows = (profiles || []).map(p => ({
         ...p,
         created_at: authMap[p.id] || null,
         application_count: countMap[p.id] || 0,
-      })));
+      }));
+
+      // Include auth users who have no profile row (e.g. registration profile write failed)
+      const orphanRows = (authData?.users || [])
+        .filter(u => !profileIds.has(u.id))
+        .map(u => ({
+          id: u.id,
+          full_name: u.user_metadata?.full_name || null,
+          email: u.email,
+          phone: u.phone || null,
+          plan: 'free',
+          role: 'user',
+          created_at: u.created_at,
+          application_count: countMap[u.id] || 0,
+        }));
+
+      return ok(res, [...profileRows, ...orphanRows]);
     }
 
     // PUT /admin/users?id=X — update user plan/role/status
