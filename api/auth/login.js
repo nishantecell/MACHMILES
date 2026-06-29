@@ -33,15 +33,25 @@ export default async function handler(req, res) {
     // Get profile
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, plan, onboarded')
+      .select('*')
       .eq('id', user.id)
       .single();
+
+    // Auto-fix: existing users (>30 min old) stuck with onboarded:false due to old broken API
+    let onboarded = profile?.onboarded ?? false;
+    if (onboarded === false && user.created_at) {
+      const ageMs = Date.now() - new Date(user.created_at).getTime();
+      if (ageMs > 30 * 60 * 1000) {
+        await supabase.from('profiles').update({ onboarded: true }).eq('id', user.id);
+        onboarded = true;
+      }
+    }
 
     // Generate our own JWT tokens for API auth
     const accessToken = jwt.sign(
       { userId: user.id, email: user.email, role: profile?.role || 'user' },
       process.env.JWT_ACCESS_SECRET,
-      { expiresIn: '7d' } // 7 days for convenience
+      { expiresIn: '7d' }
     );
 
     return res.status(200).json({
@@ -49,15 +59,16 @@ export default async function handler(req, res) {
       message: 'Login successful',
       data: {
         user: {
-          id:       user.id,
-          name:     profile?.full_name || user.user_metadata?.full_name || email.split('@')[0],
-          email:    user.email,
-          role:     'user',
-          plan:     profile?.plan || 'free',
-          onboarded: profile?.onboarded || false,
+          id:         user.id,
+          name:       profile?.full_name || user.user_metadata?.full_name || email.split('@')[0],
+          email:      user.email,
+          role:       profile?.role || 'user',
+          plan:       profile?.plan || 'free',
+          onboarded,
+          created_at: user.created_at,
         },
         accessToken,
-        refreshToken: accessToken, // same token for simplicity
+        refreshToken: accessToken,
       },
     });
   } catch (e) {
