@@ -15,9 +15,12 @@ export default async function handler(req, res) {
 
   // Diagnostic: GET /api/payments returns current key config
   if (req.method === 'GET') {
+    const kid = process.env.RAZORPAY_KEY_ID?.trim() || 'NOT SET';
+    const sec = process.env.RAZORPAY_KEY_SECRET?.trim() || '';
     return ok(res, {
-      key_id: process.env.RAZORPAY_KEY_ID || 'NOT SET',
-      secret_length: process.env.RAZORPAY_KEY_SECRET?.length || 0,
+      key_id: kid,
+      secret_length: sec.length,
+      secret_preview: sec.slice(0, 4) + '...' + sec.slice(-4),
     });
   }
 
@@ -41,8 +44,8 @@ export default async function handler(req, res) {
       // Debug: show which key is being used (first 16 chars only)
       console.log('Using Razorpay KEY_ID:', process.env.RAZORPAY_KEY_ID?.slice(0, 16));
       const razorpay = new Razorpay({
-        key_id:     process.env.RAZORPAY_KEY_ID,
-        key_secret: process.env.RAZORPAY_KEY_SECRET,
+        key_id:     process.env.RAZORPAY_KEY_ID?.trim(),
+        key_secret: process.env.RAZORPAY_KEY_SECRET?.trim(),
       });
 
       let amount = PLANS[plan].amount;
