@@ -21,10 +21,15 @@ export default async function handler(req, res) {
 
   // --- Create Order ---
   if (action === 'create-order') {
-    const { plan, promo_code } = req.body;
-    if (!PLANS[plan]) return badReq(res, 'Invalid plan. Choose: pro or premium');
+    const { promo_code } = req.body;
+    const plan = (req.body.plan || '').toLowerCase().trim();
+    if (!PLANS[plan]) return badReq(res, `Invalid plan "${plan}". Choose: pro or premium`);
 
     try {
+      if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+        console.error('Missing Razorpay env vars. KEY_ID present:', !!process.env.RAZORPAY_KEY_ID, 'KEY_SECRET present:', !!process.env.RAZORPAY_KEY_SECRET);
+        return err(res, 'Payment gateway not configured. Please contact support.');
+      }
       const razorpay = new Razorpay({
         key_id:     process.env.RAZORPAY_KEY_ID,
         key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -58,16 +63,18 @@ export default async function handler(req, res) {
         user:      { name: user.full_name, email: user.email },
       });
     } catch (e) {
-      console.error('Create order error:', e.message);
-      return err(res, 'Failed to create order');
+      console.error('Create order error:', e.message, e.statusCode, JSON.stringify(e.error));
+      const detail = e.error?.description || e.message || 'Unknown error';
+      return err(res, `Failed to create order: ${detail}`);
     }
   }
 
   // --- Verify Payment ---
   if (action === 'verify') {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, plan } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const plan = (req.body.plan || '').toLowerCase().trim();
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) return badReq(res, 'Missing payment verification fields');
-    if (!PLANS[plan]) return badReq(res, 'Invalid plan');
+    if (!PLANS[plan]) return badReq(res, `Invalid plan "${plan}"`);
 
     const expected = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
