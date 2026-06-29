@@ -21,18 +21,17 @@ export default async function handler(req, res) {
     const token = header.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', decoded.userId)
-      .single();
+    const [{ data: profile }, { data: authUserData }] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', decoded.userId).single(),
+      supabase.auth.admin.getUserById(decoded.userId),
+    ]);
 
     if (!profile) return res.status(404).json({ success: false, message: 'User not found' });
 
     return res.status(200).json({
       success: true,
       message: 'Success',
-      data: { id: decoded.userId, email: decoded.email, ...profile },
+      data: { id: decoded.userId, email: decoded.email, created_at: authUserData?.user?.created_at, ...profile },
     });
   } catch (e) {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
