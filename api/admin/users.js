@@ -16,20 +16,21 @@ export default async function handler(req, res) {
     // GET /admin/users?dashboard=true — overview stats
     if (req.method === 'GET' && dashboard === 'true') {
       const [
-        { count: totalUsers },
         { count: proUsers },
         { count: premiumUsers },
         { count: totalApps },
         { data: recentUsers },
+        { data: authData },
       ] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('plan', 'pro'),
         supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('plan', 'premium'),
         supabase.from('applications').select('*', { count: 'exact', head: true }),
         supabase.from('profiles').select('id, full_name, email, plan').limit(10),
+        supabase.auth.admin.listUsers({ perPage: 1000 }),
       ]);
+      const totalUsers = authData?.users?.length || 0;
       return ok(res, {
-        users: { total: totalUsers || 0, pro: proUsers || 0, premium: premiumUsers || 0, free: (totalUsers || 0) - (proUsers || 0) - (premiumUsers || 0) },
+        users: { total: totalUsers, pro: proUsers || 0, premium: premiumUsers || 0, free: totalUsers - (proUsers || 0) - (premiumUsers || 0) },
         applications: { total: totalApps || 0 },
         revenue: { total: 0, currency: 'INR' },
         recentUsers: recentUsers || [],
